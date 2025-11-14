@@ -36,15 +36,21 @@ wahl = input("Bitte wählen (1/2/3): ").strip()
 parkplatz_option = None
 essen_option = None
 bestell_zeit = None
+behindert = False
+to_go = False  # Standard: False
 
-if wahl in ["1","3"]:
+if wahl in ["1", "3"]:
     print("\nParkplatz-Optionen:")
     print("1. Mit Ladesäule ⚡")
     print("2. Ohne Ladesäule")
     p_option = input("Bitte wählen (1/2): ").strip()
     parkplatz_option = "mit Ladesäule" if p_option == "1" else "ohne Ladesäule"
 
-if wahl in ["2","3"]:
+    # Abfrage Behindertenparkplatz
+    b_option = input("Benötigen Sie einen behindertengerechten Parkplatz? (j/n): ").strip().lower()
+    behindert = True if b_option == "j" else False
+
+if wahl in ["2", "3"]:
     print("\nEssens-Optionen:")
     print("1. Standard 🍔")
     print("2. Vegetarisch 🥦")
@@ -55,6 +61,10 @@ if wahl in ["2","3"]:
     essen_option = essen_map.get(e_option, "Standard")
     bestell_zeit = input("Wann möchten Sie essen? (HH:MM): ").strip()
 
+    # Wenn kein Parkplatz gebucht, automatisch To-Go
+    if wahl == "2":
+        to_go = True
+
 # ---------- Nachrichten empfangen ----------
 @fahrerAgent.on_message(model=Message)
 async def message_handler(ctx: Context, sender: str, msg: Message):
@@ -63,13 +73,18 @@ async def message_handler(ctx: Context, sender: str, msg: Message):
 # ---------- Intervallnachricht alle 10 Sekunden ----------
 @fahrerAgent.on_interval(period=10.0)  # alle 10 Sekunden
 async def send_messages(ctx: Context):
-    if wahl in ["1","3"]:
-        msg_text = f"Ich suche einen {fahrzeug_typ}-Parkplatz {parkplatz_option}."
+    if wahl in ["1", "3"]:
+        msg_text = f"Ich suche einen {fahrzeug_typ}-Parkplatz {parkplatz_option}"
+        if behindert:
+            msg_text += " (Behindert)"
+        msg_text += "."
         await ctx.send(parkplatz_adresse, Message(message=msg_text))
         print(f"Nachricht an Parkplatz-Agent gesendet: {msg_text}")
 
-    if wahl in ["2","3"]:
+    if wahl in ["2", "3"]:
         msg_text = f"Ich möchte {essen_option}-Essen bestellen."
+        if to_go:
+            msg_text += " (To-Go)"
         await ctx.send(essensservice_adresse, Message(message=msg_text, zeit=bestell_zeit))
         print(f"Nachricht an Essensservice-Agent gesendet: {msg_text}, Zeit: {bestell_zeit}")
 
