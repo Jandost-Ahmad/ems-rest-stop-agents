@@ -121,6 +121,66 @@ async def message_handler(ctx: Context, sender: str, msg: Message):
             return datetime.now() + timedelta(minutes=int(zeit_str))
         return None
 
+    # ---------- Helper functions for dynamic allocation ----------
+    def total_pkw_available():
+        return parkplatz_status["PKW"]["frei"] + parkplatz_status["PKW"]["lade"]
+
+    def consume_pkw_slots(n: int):
+        """Consume up to n PKW slots from frei then lade. Return number actually consumed."""
+        consumed = 0
+        # consume from 'frei' first
+        take = min(n, parkplatz_status["PKW"]["frei"])
+        parkplatz_status["PKW"]["frei"] -= take
+        consumed += take
+        remaining = n - consumed
+        if remaining > 0:
+            take2 = min(remaining, parkplatz_status["PKW"]["lade"])
+            parkplatz_status["PKW"]["lade"] -= take2
+            consumed += take2
+        return consumed
+
+    def try_allocate_pkw_behindert(lade_requested: bool):
+        """Try to allocate a behindert PKW. If none left, try to convert 2 PKW slots.
+        Returns (success, message)."""
+        # prefer exact match first
+        if lade_requested:
+            if parkplatz_status["PKW_Behindert"]["lade"] > 0:
+                parkplatz_status["PKW_Behindert"]["lade"] -= 1
+                return True, "♿🔌 Behinderten-PKW-Ladeparkplatz reserviert."
+        else:
+            if parkplatz_status["PKW_Behindert"]["frei"] > 0:
+                parkplatz_status["PKW_Behindert"]["frei"] -= 1
+                return True, "♿ PKW-Behindertenparkplatz reserviert."
+
+        # fallback: convert two PKW spots into one behindert spot
+        if total_pkw_available() >= 2:
+            consumed = consume_pkw_slots(2)
+            if consumed == 2:
+                # We effectively used 2 PKW slots to serve one behindert reservation
+                return True, "♿ (Fallback) 2x PKW -> Behindertenplatz reserviert."
+        return False, None
+
+    def try_allocate_lkw():
+        """Try to allocate an LKW slot. If none, try Bus, or 3 PKW as fallback.
+        Returns (success, message)."""
+        if parkplatz_status["LKW"]["lade"] > 0:
+            parkplatz_status["LKW"]["lade"] -= 1
+            return True, "🚚🔌 LKW-Ladeparkplatz reserviert."
+
+        # try bus slots as a fallback (one bus = 1 big slot)
+        if parkplatz_status.get("BUS", {}).get("lade", 0) > 0:
+            parkplatz_status["BUS"]["lade"] -= 1
+            return True, "🚚 (Fallback) Bus-Parkplatz zu LKW-Zwecken reserviert."
+
+        # fallback: take 3 PKW slots
+        if total_pkw_available() >= 3:
+            consumed = consume_pkw_slots(3)
+            if consumed == 3:
+                return True, "🚚 (Fallback) 3x PKW -> LKW-Parkplatz reserviert."
+
+        return False, None
+
+
     # reservation store (in-memory)
     if "reservations" not in globals():
         global reservations
@@ -129,16 +189,12 @@ async def message_handler(ctx: Context, sender: str, msg: Message):
 
     # ---- Behindertenparkplätze PKW ----
     if "behindert" in text and "pkw" in text:
-        if "lade" in text:
-            if parkplatz_status["PKW_Behindert"]["lade"] > 0:
-                parkplatz_status["PKW_Behindert"]["lade"] -= 1
-                rid = str(uuid.uuid4())[:8]
-                antwort = "♿🔌 Behinderten-PKW-Ladeparkplatz reserviert."
-        else:
-            if parkplatz_status["PKW_Behindert"]["frei"] > 0:
-                parkplatz_status["PKW_Behindert"]["frei"] -= 1
-                rid = str(uuid.uuid4())[:8]
-                antwort = "♿ PKW-Behindertenparkplatz reserviert."
+        # prefer explicit disabled+lade request when present
+        lade_requested = "lade" in text
+        ok, msg = try_allocate_pkw_behindert(lade_requested)
+        if ok:
+            rid = str(uuid.uuid4())[:8]
+            antwort = msg
 
     # ---- Behindertenparkplätze LKW (ALLE MIT LADE!) ----
     elif "behindert" in text and "lkw" in text:
@@ -146,6 +202,12 @@ async def message_handler(ctx: Context, sender: str, msg: Message):
             parkplatz_status["LKW_Behindert"]["lade"] -= 1
             rid = str(uuid.uuid4())[:8]
             antwort = "♿🚚🔌 Behinderten-LKW-Ladeparkplatz reserviert."
+        else:
+            # dynamic fallback for LKW-behindert: try regular LKW allocation strategy
+            ok, msg = try_allocate_lkw()
+            if ok:
+                rid = str(uuid.uuid4())[:8]
+                antwort = "♿🚚 (Fallback) " + msg
 
     # ---- Normale PKW ----
     elif "pkw" in text:
@@ -160,10 +222,10 @@ async def message_handler(ctx: Context, sender: str, msg: Message):
 
     # ---- Normale LKW (ALLE MIT LADE!) ----
     elif "lkw" in text:
-        if parkplatz_status["LKW"]["lade"] > 0:
-            parkplatz_status["LKW"]["lade"] -= 1
+        ok, msg = try_allocate_lkw()
+        if ok:
             rid = str(uuid.uuid4())[:8]
-            antwort = "🚚🔌 LKW-Ladeparkplatz reserviert."
+            antwort = msg
 
     # ---- Bus ----
     elif "bus" in text:
