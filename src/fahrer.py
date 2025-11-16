@@ -4,6 +4,8 @@ from uagents import Agent, Context, Model
 class Message(Model):
     message: str
     zeit: str = None  # optional für Essensservice
+    reservation_id: str = None
+    sender_name: str = None
 
 # ---------- Adressen der Agenten ----------
 parkplatz_adresse = "test-agent://agent1qtctwqx03uw8d4fy86c4c6jp4g4d60ujcuqfd2hhkm3s8jmza0phu7t0hn9"
@@ -36,8 +38,10 @@ wahl = input("Bitte wählen (1/2/3): ").strip()
 parkplatz_option = None
 essen_option = None
 bestell_zeit = None
+park_zeit = None
 behindert = False
 to_go = False  # Standard: False
+last_reservation_id = None
 
 if wahl in ["1", "3"]:
     print("\nParkplatz-Optionen:")
@@ -49,6 +53,8 @@ if wahl in ["1", "3"]:
     # Abfrage Behindertenparkplatz
     b_option = input("Benötigen Sie einen behindertengerechten Parkplatz? (j/n): ").strip().lower()
     behindert = True if b_option == "j" else False
+    # optional: until when to park
+    park_zeit = input("Bis wann möchten Sie parken? (HH:MM oder Minuten): ").strip()
 
 if wahl in ["2", "3"]:
     print("\nEssens-Optionen:")
@@ -68,7 +74,24 @@ if wahl in ["2", "3"]:
 # ---------- Nachrichten empfangen ----------
 @fahrerAgent.on_message(model=Message)
 async def message_handler(ctx: Context, sender: str, msg: Message):
-    print(f"Nachricht von {sender}: {msg.message}")
+    # prefer sender_name from message (set by services) otherwise fall back to address
+    sender_label = getattr(msg, "sender_name", None) or sender
+    print(f"Nachricht von {sender_label}: {msg.message}")
+    # show reservation id if provided in the message fields
+    if getattr(msg, "reservation_id", None):
+        global last_reservation_id
+        last_reservation_id = msg.reservation_id
+        print(f"Reservierung-ID erhalten: {last_reservation_id}")
+    else:
+        # try to parse an ID from the text (e.g. 'ID: 7ae52605')
+        try:
+            import re
+            m = re.search(r"id[:\s]*([0-9a-fA-F]+)", msg.message, flags=re.IGNORECASE)
+            if m:
+                last_reservation_id = m.group(1)
+                print(f"Reservierung-ID (aus Text) erkannt: {last_reservation_id}")
+        except Exception:
+            pass
 
 # ---------- Intervallnachricht alle 10 Sekunden ----------
 @fahrerAgent.on_interval(period=10.0)  # alle 10 Sekunden
@@ -78,8 +101,9 @@ async def send_messages(ctx: Context):
         if behindert:
             msg_text += " (Behindert)"
         msg_text += "."
-        await ctx.send(parkplatz_adresse, Message(message=msg_text))
-        print(f"Nachricht an Parkplatz-Agent gesendet: {msg_text}")
+        # include the requested end time/duration so the Parkplatz agent can parse it
+        await ctx.send(parkplatz_adresse, Message(message=msg_text, zeit=park_zeit))
+        print(f"Nachricht an Parkplatz-Agent gesendet: {msg_text}, zeit={park_zeit}")
 
     if wahl in ["2", "3"]:
         msg_text = f"Ich möchte {essen_option}-Essen bestellen."
