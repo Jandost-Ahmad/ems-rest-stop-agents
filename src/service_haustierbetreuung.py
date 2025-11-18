@@ -1,14 +1,18 @@
 from uagents import Agent, Context, Model
 import datetime
 
-# ---------- Nachrichtenmodell ----------
+# ---------- Input-Modell ----------
 class HaustierMessage(Model):
-    message: str
-    zeit: str = None          # Uhrzeit der Anfrage / Check-In
-    betreuung_von: str = None # Startzeit der Betreuung
-    betreuung_bis: str = None # Endzeit der Betreuung
+    type: str = "haustierbetreuung"
+    haustierart: str
+    zeit: str
+    betreuung_von: str
+    betreuung_bis: str
+    client_sender: str   # Adresse, an die der Agent die Antwort senden soll
 
+# ---------- Output-Modell ----------
 class Message(Model):
+    type: str = "haustier_bestaetigung"   # Typ der Antwort
     message: str
     zeit: str = None
 
@@ -38,16 +42,18 @@ print(f"Adresse: {petHotelAgent.address}")
 print(f"Kapazitäten: 🐶 Hunde: {MAX_HUNDE}, 🐱 Katzen: {MAX_KATZEN}\n")
 
 # ---------- Handler ----------
-@petHotelAgent.on_message(model=HaustierMessage)  # Eingehend spezialisierte Nachricht
+@petHotelAgent.on_message(model=HaustierMessage)
 async def handler(ctx: Context, sender: str, msg: HaustierMessage):
 
-    text = msg.message.lower()
+    client = msg.client_sender or sender
+    text = msg.haustierart.lower()
 
     # Uhrzeit prüfen
     try:
         jetzt = datetime.datetime.strptime(msg.zeit, "%H:%M").time()
     except:
-        await ctx.send(sender, Message(
+        await ctx.send(client, Message(
+            type="haustier_fehler",
             message="❌ Ungültige Zeit. Bitte HH:MM angeben.",
             zeit=msg.zeit
         ))
@@ -58,7 +64,8 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
         start = datetime.datetime.strptime(msg.betreuung_von, "%H:%M").time()
         ende = datetime.datetime.strptime(msg.betreuung_bis, "%H:%M").time()
     except:
-        await ctx.send(sender, Message(
+        await ctx.send(client, Message(
+            type="haustier_fehler",
             message="❌ Bitte Zeitraum als HH:MM senden (betreuung_von / betreuung_bis).",
             zeit=msg.zeit
         ))
@@ -69,9 +76,9 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
         antwort = (
             f"❌ Buchungen sind nur bis 18:00 möglich.\n"
             f"Aktuelle Zeit: {msg.zeit}\n"
-            f"Check-In möglich bis 22:00 Uhr."
+            f"Check-In möglich bis {CHECKIN_BIS.strftime('%H:%M')} Uhr."
         )
-        await ctx.send(sender, Message(message=antwort, zeit=msg.zeit))
+        await ctx.send(client, Message(type="haustier_fehler", message=antwort, zeit=msg.zeit))
         return
 
     # Übernacht-Betreuung erkennen
@@ -85,7 +92,7 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
                 f"🐶 Hundebetreuung reserviert!\n"
                 f"⏱️ Zeitraum: {msg.betreuung_von} – {msg.betreuung_bis}"
                 + (" (über Nacht)" if ueber_nacht else "") +
-                f"\nCheck-In bis {CHECKIN_BIS.strftime('%H:%M')} möglich."
+                f"\nCheck-In bis {CHECKIN_BIS.strftime('%H:%M')} Uhr möglich."
             )
         else:
             antwort = "❌ Keine Hundeplätze mehr verfügbar."
@@ -98,7 +105,7 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
                 f"🐱 Katzenbetreuung reserviert!\n"
                 f"⏱️ Zeitraum: {msg.betreuung_von} – {msg.betreuung_bis}"
                 + (" (über Nacht)" if ueber_nacht else "") +
-                f"\nCheck-In bis {CHECKIN_BIS.strftime('%H:%M')} möglich."
+                f"\nCheck-In bis {CHECKIN_BIS.strftime('%H:%M')} Uhr möglich."
             )
         else:
             antwort = "❌ Keine Katzenplätze mehr verfügbar."
@@ -106,13 +113,11 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
     else:
         antwort = "❌ Bitte angeben, ob Hund oder Katze."
 
-    # Antwort an Sender als Standard-Message
-    await ctx.send(sender, Message(message=antwort, zeit=msg.zeit))
+    # Antwort an den Client senden
+    await ctx.send(client, Message(type="haustier_bestaetigung", message=antwort, zeit=msg.zeit))
 
     # Logging
-    ctx.logger.info(
-        f"Hunde frei={tiere_status['hunde']} | Katzen frei={tiere_status['katzen']}"
-    )
+    ctx.logger.info(f"Hunde frei={tiere_status['hunde']} | Katzen frei={tiere_status['katzen']}")
 
 # ---------- Agent starten ----------
 if __name__ == "__main__":

@@ -3,295 +3,209 @@ import uuid
 from datetime import datetime, timedelta
 import re
 
-# ---------- Nachrichtenmodell ----------
+# ---------- Input-Modell ----------
+class ParkplatzMessage(Model):
+    type: str = "parkplatz"
+    fahrzeugart: str        # PKW, PKW_Behindert, LKW, BUS, …
+    ladestation: bool       # True / False
+    zeit: str               # HH:MM oder Minuten
+    reservation_id: str
+    client_sender: str
+
+# ---------- Output-Modell ----------
 class Message(Model):
+    type: str               # z.B. "parkplatz_reservierung"
     message: str
     zeit: str = None
-    reservation_id: str = None
-    sender_name: str = None
 
-# ---------- Initialisierung ----------
-try:
-    pkw_total = 100
-    pkw_lade_total = 50
-    lkw_total = 300   # alle LKW haben Ladeinfrastruktur
-    bus_total = 3     # neue Bus-Parkplätze mit Ladeinfrastruktur
-except ValueError:
-    print("⚠️ Ungültige Eingabe! Bitte nur Zahlen verwenden.")
-    exit(1)
+# ---------- Parkplatz-Konfiguration ----------
+pkw_total = 100
+pkw_lade_total = 50
+lkw_total = 300
+bus_total = 3
 
-# ---------- 2 % Behindertenparkplätze ----------
 def two_percent(x):
     return max(1, round(x * 0.02))
 
-# PKW behindert
 behindert_pkw_ohne_lade = two_percent(pkw_total)
 behindert_pkw_mit_lade = two_percent(pkw_total)
-
-# LKW behindert (ALLE MIT LADE!)
 behindert_lkw_mit_lade = two_percent(lkw_total)
 
-# ---------- Normale PKW-Berechnung ----------
 pkw_rest = pkw_total - behindert_pkw_ohne_lade - behindert_pkw_mit_lade
-
 pkw_lade = min(pkw_lade_total, pkw_rest)
 pkw_frei = pkw_rest - pkw_lade
 
-# ---------- Normale LKW-Berechnung ----------
-# ALLE LKW-Parkplätze haben Ladeinfrastruktur
 lkw_lade = lkw_total - behindert_lkw_mit_lade
+bus_lade = bus_total
 
-# ---------- Bus-Parkplätze ----------
-bus_lade = bus_total  # alle Bus-Parkplätze haben Ladeinfrastruktur
-
-# ---------- Status speichern ----------
 parkplatz_status = {
-    "PKW": {
-        "frei": pkw_frei,
-        "lade": pkw_lade
-    },
-    "PKW_Behindert": {
-        "frei": behindert_pkw_ohne_lade,
-        "lade": behindert_pkw_mit_lade
-    },
-    "LKW": {
-        "lade": lkw_lade
-    },
-    "LKW_Behindert": {
-        "lade": behindert_lkw_mit_lade  # kein "frei" mehr!
-    },
-    "BUS": {
-        "lade": bus_lade
-    }
+    "PKW": {"frei": pkw_frei, "lade": pkw_lade},
+    "PKW_Behindert": {"frei": behindert_pkw_ohne_lade, "lade": behindert_pkw_mit_lade},
+    "LKW": {"lade": lkw_lade},
+    "LKW_Behindert": {"lade": behindert_lkw_mit_lade},
+    "BUS": {"lade": bus_lade}
 }
 
-print("\nParkplatz-Agent startet mit:")
-# PKW
-print("🅿️ PKW:")
-print(f"   - Normal frei: {parkplatz_status['PKW']['frei']}")
-print(f"   - Mit Ladesäule: {parkplatz_status['PKW']['lade']}")
-
-# PKW Behindert
-print("♿ PKW Behindertengerecht:")
-print(f"   - Normal frei: {parkplatz_status['PKW_Behindert']['frei']}")
-print(f"   - Mit Ladesäule: {parkplatz_status['PKW_Behindert']['lade']}")
-
-# LKW
-print("🚚 LKW:")
-print(f"   - Mit Ladesäule: {parkplatz_status['LKW']['lade']}")
-
-# LKW Behindert
-print("♿🚚 LKW Behindertengerecht:")
-print(f"   - Mit Ladesäule: {parkplatz_status['LKW_Behindert']['lade']}")
-
-# Bus
-print("🚌 Bus:")
-print(f"   - Mit Ladesäule: {parkplatz_status['BUS']['lade']} \n")
-
-# ---------- Agent definieren ----------
+# ---------- Agent ----------
 parkplatzAgent = Agent(
     name="ParkplatzAgent",
     port=8001,
     seed="parkplatzAgent",
     endpoint=["http://localhost:8001/submit"],
 )
-print(parkplatzAgent.address)
-# ---------- Nachrichten-Handler ----------
-@parkplatzAgent.on_message(model=Message)
-async def message_handler(ctx: Context, sender: str, msg: Message):
-    text = msg.message.lower()
-    antwort = "❌ Leider keine passenden Parkplätze frei."
+
+print("\nParkplatz-Agent gestartet:")
+for k, v in parkplatz_status.items():
+    print(f"{k}: {v}")
+
+# ---------- Reservierungen ----------
+reservations = {}
+
+# ---------- Helper ----------
+def parse_time_field(zeit_str: str):
+    if not zeit_str:
+        return None
+    zeit_str = zeit_str.strip()
+    hhmm = re.match(r"^(\d{1,2}):(\d{2})$", zeit_str)
+    if hhmm:
+        h, m = int(hhmm.group(1)), int(hhmm.group(2))
+        now = datetime.now()
+        end = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if end <= now:
+            end += timedelta(days=1)
+        return end
+    if zeit_str.isdigit():
+        return datetime.now() + timedelta(minutes=int(zeit_str))
+    return None
+
+def total_pkw_available():
+    return parkplatz_status["PKW"]["frei"] + parkplatz_status["PKW"]["lade"]
+
+def consume_pkw_slots(n: int):
+    consumed = 0
+    take = min(n, parkplatz_status["PKW"]["frei"])
+    parkplatz_status["PKW"]["frei"] -= take
+    consumed += take
+    rest = n - consumed
+    if rest > 0:
+        take2 = min(rest, parkplatz_status["PKW"]["lade"])
+        parkplatz_status["PKW"]["lade"] -= take2
+        consumed += take2
+    return consumed
+
+def try_allocate_lkw():
+    if parkplatz_status["LKW"]["lade"] > 0:
+        parkplatz_status["LKW"]["lade"] -= 1
+        return True, "🚚🔌 LKW-Ladeparkplatz reserviert."
+    if parkplatz_status.get("BUS", {}).get("lade", 0) > 0:
+        parkplatz_status["BUS"]["lade"] -= 1
+        return True, "🚚 (Fallback) Bus-Parkplatz für LKW reserviert."
+    if total_pkw_available() >= 3 and consume_pkw_slots(3) == 3:
+        return True, "🚚 (Fallback) 3× PKW → LKW-Platz reserviert."
+    return False, None
+
+# ---------- Handler ----------
+@parkplatzAgent.on_message(model=ParkplatzMessage)
+async def message_handler(ctx: Context, sender: str, msg: ParkplatzMessage):
+    fahrzeugart = msg.fahrzeugart.lower()
+    lade = bool(msg.ladestation)
+    client = msg.client_sender or sender
+    antwort = "❌ Kein geeigneter Parkplatz verfügbar."
     rid = None
 
-    # helper: parse time field (HH:MM or minutes)
-    def parse_time_field(zeit_str: str):
-        if not zeit_str:
-            return None
-        zeit_str = zeit_str.strip()
-        hhmm = re.match(r"^(\d{1,2}):(\d{2})$", zeit_str)
-        if hhmm:
-            h = int(hhmm.group(1))
-            m = int(hhmm.group(2))
-            now = datetime.now()
-            end = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            if end <= now:
-                end = end + timedelta(days=1)
-            return end
-        if zeit_str.isdigit():
-            return datetime.now() + timedelta(minutes=int(zeit_str))
-        return None
-
-    # ---------- Helper functions for dynamic allocation ----------
-    def total_pkw_available():
-        return parkplatz_status["PKW"]["frei"] + parkplatz_status["PKW"]["lade"]
-
-    def consume_pkw_slots(n: int):
-        """Consume up to n PKW slots from frei then lade. Return number actually consumed."""
-        consumed = 0
-        # consume from 'frei' first
-        take = min(n, parkplatz_status["PKW"]["frei"])
-        parkplatz_status["PKW"]["frei"] -= take
-        consumed += take
-        remaining = n - consumed
-        if remaining > 0:
-            take2 = min(remaining, parkplatz_status["PKW"]["lade"])
-            parkplatz_status["PKW"]["lade"] -= take2
-            consumed += take2
-        return consumed
-
-    def try_allocate_pkw_behindert(lade_requested: bool):
-        """Try to allocate a behindert PKW. If none left, try to convert 2 PKW slots.
-        Returns (success, message)."""
-        # prefer exact match first
-        if lade_requested:
-            if parkplatz_status["PKW_Behindert"]["lade"] > 0:
-                parkplatz_status["PKW_Behindert"]["lade"] -= 1
-                return True, "♿🔌 Behinderten-PKW-Ladeparkplatz reserviert."
-        else:
-            if parkplatz_status["PKW_Behindert"]["frei"] > 0:
-                parkplatz_status["PKW_Behindert"]["frei"] -= 1
-                return True, "♿ PKW-Behindertenparkplatz reserviert."
-
-        # fallback: convert two PKW spots into one behindert spot
-        if total_pkw_available() >= 2:
-            consumed = consume_pkw_slots(2)
-            if consumed == 2:
-                # We effectively used 2 PKW slots to serve one behindert reservation
-                return True, "♿ (Fallback) 2x PKW -> Behindertenplatz reserviert."
-        return False, None
-
-    def try_allocate_lkw():
-        """Try to allocate an LKW slot. If none, try Bus, or 3 PKW as fallback.
-        Returns (success, message)."""
-        if parkplatz_status["LKW"]["lade"] > 0:
-            parkplatz_status["LKW"]["lade"] -= 1
-            return True, "🚚🔌 LKW-Ladeparkplatz reserviert."
-
-        # try bus slots as a fallback (one bus = 1 big slot)
-        if parkplatz_status.get("BUS", {}).get("lade", 0) > 0:
-            parkplatz_status["BUS"]["lade"] -= 1
-            return True, "🚚 (Fallback) Bus-Parkplatz zu LKW-Zwecken reserviert."
-
-        # fallback: take 3 PKW slots
-        if total_pkw_available() >= 3:
-            consumed = consume_pkw_slots(3)
-            if consumed == 3:
-                return True, "🚚 (Fallback) 3x PKW -> LKW-Parkplatz reserviert."
-
-        return False, None
-
-
-    # reservation store (in-memory)
-    if "reservations" not in globals():
-        global reservations
-        reservations = {}
-
-
-    # ---- Behindertenparkplätze PKW ----
-    if "behindert" in text and "pkw" in text:
-        # prefer explicit disabled+lade request when present
-        lade_requested = "lade" in text
-        ok, msg = try_allocate_pkw_behindert(lade_requested)
-        if ok:
+    # ---- Fahrzeuglogik ----
+    if "pkw" in fahrzeugart and "behindert" in fahrzeugart:
+        if lade and parkplatz_status["PKW_Behindert"]["lade"] > 0:
+            parkplatz_status["PKW_Behindert"]["lade"] -= 1
+            antwort = "♿🔌 Behinderten-PKW-Ladeparkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
-            antwort = msg
+        elif not lade and parkplatz_status["PKW_Behindert"]["frei"] > 0:
+            parkplatz_status["PKW_Behindert"]["frei"] -= 1
+            antwort = "♿ PKW-Behindertenparkplatz reserviert."
+            rid = str(uuid.uuid4())[:8]
+        elif total_pkw_available() >= 2 and consume_pkw_slots(2) == 2:
+            antwort = "♿ (Fallback) 2× PKW → Behindertenplatz reserviert."
+            rid = str(uuid.uuid4())[:8]
 
-    # ---- Behindertenparkplätze LKW (ALLE MIT LADE!) ----
-    elif "behindert" in text and "lkw" in text:
+    elif "pkw" in fahrzeugart:
+        if lade and parkplatz_status["PKW"]["lade"] > 0:
+            parkplatz_status["PKW"]["lade"] -= 1
+            antwort = "🔌🚗 PKW-Ladeparkplatz reserviert."
+            rid = str(uuid.uuid4())[:8]
+        elif not lade and parkplatz_status["PKW"]["frei"] > 0:
+            parkplatz_status["PKW"]["frei"] -= 1
+            antwort = "🚗 PKW-Parkplatz reserviert."
+            rid = str(uuid.uuid4())[:8]
+
+    elif "lkw" in fahrzeugart and "behindert" in fahrzeugart:
         if parkplatz_status["LKW_Behindert"]["lade"] > 0:
             parkplatz_status["LKW_Behindert"]["lade"] -= 1
+            antwort = "♿🚚🔌 Behinderten-LKW-Parkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
-            antwort = "♿🚚🔌 Behinderten-LKW-Ladeparkplatz reserviert."
         else:
-            # dynamic fallback for LKW-behindert: try regular LKW allocation strategy
-            ok, msg = try_allocate_lkw()
+            ok, msg2 = try_allocate_lkw()
             if ok:
+                antwort = "♿🚚 (Fallback) " + msg2
                 rid = str(uuid.uuid4())[:8]
-                antwort = "♿🚚 (Fallback) " + msg
 
-    # ---- Normale PKW ----
-    elif "pkw" in text:
-        if "lade" in text and parkplatz_status["PKW"]["lade"] > 0:
-            parkplatz_status["PKW"]["lade"] -= 1
-            rid = str(uuid.uuid4())[:8]
-            antwort = "🔌🚗 PKW-Ladeparkplatz reserviert."  
-        elif parkplatz_status["PKW"]["frei"] > 0:
-            parkplatz_status["PKW"]["frei"] -= 1
-            rid = str(uuid.uuid4())[:8]
-            antwort = "🚗 PKW-Parkplatz ohne Ladesäule reserviert."
-
-    # ---- Normale LKW (ALLE MIT LADE!) ----
-    elif "lkw" in text:
-        ok, msg = try_allocate_lkw()
+    elif "lkw" in fahrzeugart:
+        ok, msg2 = try_allocate_lkw()
         if ok:
+            antwort = msg2
             rid = str(uuid.uuid4())[:8]
-            antwort = msg
 
-    # ---- Bus ----
-    elif "bus" in text:
+    elif "bus" in fahrzeugart:
         if parkplatz_status["BUS"]["lade"] > 0:
             parkplatz_status["BUS"]["lade"] -= 1
+            antwort = "🚌🔌 Bus-Parkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
-            antwort = "🚌🔌 Bus-Ladeparkplatz reserviert."
 
-    # Antwort senden
-    # include reservation id and sender name when replying
-    await ctx.send(sender, Message(message=antwort, reservation_id=rid, sender_name=parkplatzAgent.name))
+    # ---- Antwort an Client senden ----
+    await ctx.send(
+        client,
+        Message(
+            type="parkplatz_reservierung",
+            message=antwort + (f" (RID={rid})" if rid else ""),
+            zeit=msg.zeit
+        )
+    )
 
-    # if we created a reservation, store its end time (default 60 minutes unless zeit provided)
+    # ---- Reservierung speichern ----
     if rid:
-        end_dt = parse_time_field(msg.zeit) if getattr(msg, 'zeit', None) else None
-        if not end_dt:
-            end_dt = datetime.now() + timedelta(minutes=60)
+        end_dt = parse_time_field(msg.zeit) or (datetime.now() + timedelta(minutes=60))
         reservations[rid] = {
-            "sender": sender,
+            "sender": client,
             "end": end_dt,
-            "reminder_sent": False,
+            "reminder_sent": False
         }
 
-        # if message asked to share reservation with another agent, forward the reservation id
-        share_match = re.search(r"(test-agent://[^\s]+)", text)
-        if share_match:
-            target = share_match.group(1)
-            await ctx.send(target, Message(message=f"Reservierung {rid} geteilt von {parkplatzAgent.name}", reservation_id=rid, sender_name=parkplatzAgent.name))
+# ---------- Reminder & Expire ----------
+@parkplatzAgent.on_interval(period=30.0)
+async def reservation_maintenance(ctx: Context):
+    REMINDER_MINUTES = 5
+    now = datetime.now()
+    expired = []
 
+    for rid, r in reservations.items():
+        end = r["end"]
 
-    # Logging
-    ctx.logger.info(
-        f"PKW frei={parkplatz_status['PKW']['frei']} | "
-        f"PKW Lade={parkplatz_status['PKW']['lade']} | "
-        f"PKW Behindert frei={parkplatz_status['PKW_Behindert']['frei']} | "
-        f"PKW Behindert Lade={parkplatz_status['PKW_Behindert']['lade']} | "
-        f"LKW Lade={parkplatz_status['LKW']['lade']} | "
-        f"LKW Behindert Lade={parkplatz_status['LKW_Behindert']['lade']} | "
-        f"BUS Lade={parkplatz_status['BUS']['lade']}"
-    )
+        if not r["reminder_sent"] and now + timedelta(minutes=REMINDER_MINUTES) >= end > now:
+            await ctx.send(
+                r["sender"],
+                Message(type="parkplatz_reminder", message=f"⏰ Ihre Reservierung {rid} läuft um {end.strftime('%H:%M')} ab.")
+            )
+            r["reminder_sent"] = True
+
+        if now >= end:
+            expired.append(rid)
+
+    for rid in expired:
+        data = reservations.pop(rid)
+        await ctx.send(
+            data["sender"],
+            Message(type="parkplatz_abgelaufen", message=f"❗ Ihre Reservierung {rid} ist abgelaufen und wurde freigegeben.")
+        )
 
 # ---------- Agent starten ----------
 if __name__ == "__main__":
     parkplatzAgent.run()
-
-
-@parkplatzAgent.on_interval(period=30.0)
-async def reservation_maintenance(ctx: Context):
-    """Send reminders REMINDER_MINUTES before end and release expired reservations."""
-    REMINDER_MINUTES = 5
-    to_release = []
-    now = datetime.now()
-    for rid, r in list(reservations.items()):
-        end = r.get("end")
-        if not end:
-            continue
-        # send reminder
-        if (not r.get("reminder_sent", False)) and (now + timedelta(minutes=REMINDER_MINUTES) >= end and now < end):
-            await ctx.send(r["sender"], Message(message=f"⏰ Erinnerung: Ihre Reservierung {rid} läuft um {end.strftime('%H:%M')} aus. Möchten Sie verlängern? (Antwort 'verlängern <min>')", reservation_id=rid, sender_name=parkplatzAgent.name))
-            r["reminder_sent"] = True
-        # check expiry
-        if now >= end:
-            to_release.append(rid)
-
-    for rid in to_release:
-        r = reservations.pop(rid, None)
-        if not r:
-            continue
-        await ctx.send(r["sender"], Message(message=f"❗Ihre Reservierung {rid} ist abgelaufen und wurde freigegeben.", reservation_id=rid, sender_name=parkplatzAgent.name))

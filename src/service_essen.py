@@ -1,10 +1,14 @@
-from uagents import Agent, Context, Model
 import datetime
+from uagents import Model, Agent, Context
 
-# ---------- Nachrichtenmodell ----------
-class Message(Model):
-    message: str
-    zeit: str = None  # optional für Essensservice
+class EssenMessage(Model):
+    type: str = "essensservice"
+    zeit: str
+    standard: int = 0
+    vegetarisch: int = 0
+    vegan: int = 0
+    glutenfrei: int = 0
+    client_sender: str = ""  # Wer die Nachricht geschickt hat
 
 # ---------- Essensservice-Agent ----------
 essensserviceAgent = Agent(
@@ -14,87 +18,84 @@ essensserviceAgent = Agent(
     endpoint=["http://localhost:8002/submit"],
 )
 
-print(f"\nEssensservice-Agent gestartet! Adresse: {essensserviceAgent.address}\n")
+class Message(Model):
+    type:str
+    message: str
+    zeit: str = None
 
-# ---------- Hardcoded Öffnungszeiten ----------
-oeffnung = datetime.time(8, 0)   # 08:00 Uhr
-schluss = datetime.time(20, 0)   # 20:00 Uhr
-
-# ---------- Hardcoded Menü ----------
+# ---------- Hardcoded Öffnungszeiten und Menü ----------
+oeffnung = datetime.time(8, 0)
+schluss = datetime.time(20, 0)
 gerichte = {
     "standard": True,
     "vegetarisch": True,
     "vegan": True,
     "glutenfrei": True,
 }
-
-# ---------- Maximalanzahl Gerichte pro Stunde ----------
 MAX_PRO_STUNDE = 60
-# Stunden-Dict von 08 bis 19 (letzte Stunde ist 19:00–20:00)
 bestellungen_pro_stunde = {str(h).zfill(2): 0 for h in range(oeffnung.hour, schluss.hour)}
 
-# ---------- Startausgabe ----------
-print("Essensservice bereit! 🍽️")
-print(f"🕒 Öffnungszeiten: {oeffnung.strftime('%H:%M')} - {schluss.strftime('%H:%M')}")
-print("📋 Menü:")
-for k, v in gerichte.items():
-    print(f"  - {k.capitalize()}: {'✅' if v else '❌'}")
-print()
-
 # ---------- Nachricht empfangen ----------
-@essensserviceAgent.on_message(model=Message)
-async def message_handler(ctx: Context, sender: str, msg: Message):
-    text = msg.message.lower()
 
-    # ---- Normale Gerichte ----
+
+@essensserviceAgent.on_message(model=EssenMessage)
+async def essen_message_handler(ctx: Context, sender: str, msg: EssenMessage):
+
+    client = msg.client_sender
+
+    # Zeit prüfen
     try:
         fahrer_zeit = datetime.datetime.strptime(msg.zeit, "%H:%M").time()
     except (ValueError, TypeError):
-        await ctx.send(sender, Message(message="❌ Ungültige Zeitangabe. Bitte HH:MM senden.", zeit=msg.zeit))
+        await ctx.send(client, Message(
+            message="❌ Ungültige Zeitangabe. Bitte HH:MM senden.",
+            zeit=msg.zeit
+        ))
         return
 
-    # Öffnungszeiten prüfen
     if not (oeffnung <= fahrer_zeit < schluss):
-        antwort = f"❌ Wir haben zu dieser Uhrzeit geschlossen.\n🕒 Öffnungszeiten: {oeffnung.strftime('%H:%M')} - {schluss.strftime('%H:%M')}"
-        await ctx.send(sender, Message(message=antwort, zeit=msg.zeit))
+        await ctx.send(client, Message(
+            type=essensserviceAgent.name,
+            message=f"❌ Wir haben geschlossen. Öffnungszeiten: "
+                    f"{oeffnung.strftime('%H:%M')} - {schluss.strftime('%H:%M')}",
+            zeit=msg.zeit
+        ))
         return
 
     stunde = str(fahrer_zeit.hour).zfill(2)
 
-    # Maximalanzahl pro Stunde prüfen
-    if bestellungen_pro_stunde.get(stunde, 0) >= MAX_PRO_STUNDE:
-        next_hour = fahrer_zeit.hour + 1
-        gefunden = False
-        while next_hour < schluss.hour:
-            next_stunde = str(next_hour).zfill(2)
-            if bestellungen_pro_stunde.get(next_stunde, 0) < MAX_PRO_STUNDE:
-                freie_plaetze = MAX_PRO_STUNDE - bestellungen_pro_stunde[next_stunde]
-                antwort = (
-                    f"❌ Für {fahrer_zeit.strftime('%H:%M')} sind leider keine Gerichte mehr verfügbar.\n"
-                    f"➡️ Bitte buchen Sie für {next_stunde}:00, dort sind noch {freie_plaetze} Gerichte frei."
-                )
-                gefunden = True
-                break
-            next_hour += 1
-        if not gefunden:
-            antwort = "❌ Leider sind für heute keine Gerichte mehr verfügbar."
+    if bestellungen_pro_stunde[stunde] >= MAX_PRO_STUNDE:
+        await ctx.send(client, Message(
+            type=essensserviceAgent.name,
+            message=f"❌ Für {msg.zeit} sind keine Gerichte mehr verfügbar.",
+            zeit=msg.zeit
+        ))
+        return
+
+    bestellt = None
+    for gericht, menge in [
+        ("standard", msg.standard),
+        ("vegetarisch", msg.vegetarisch),
+        ("vegan", msg.vegan),
+        ("glutenfrei", msg.glutenfrei)
+    ]:
+        if menge > 0 and gerichte.get(gericht):
+            bestellt = gericht
+            break
+
+    if bestellt:
+        bestellungen_pro_stunde[stunde] += 1
+        antwort = f"✅ Ihr Gericht '{bestellt}' ist für {msg.zeit} reserviert!"
     else:
-        # Gericht prüfen
-        verfuegbar = None
-        for gericht in gerichte.keys():
-            if gericht in text:
-                verfuegbar = gerichte[gericht]
-                break
+        antwort = "😔 Das gewünschte Gericht ist heute nicht verfügbar."
 
-        if verfuegbar:
-            bestellungen_pro_stunde[stunde] += 1
-            antwort = f"✅ Ihr gewünschtes Gericht ist für {fahrer_zeit.strftime('%H:%M')} reserviert!"
-        else:
-            antwort = "😔 Das gewünschte Gericht ist heute leider nicht verfügbar."
+    await ctx.send(client, Message(
+        type=essensserviceAgent.name,
+        message=antwort,
+        zeit=msg.zeit
+    ))
 
-    # Antwort senden
-    await ctx.send(sender, Message(message=antwort, zeit=msg.zeit))
-    ctx.logger.info(f"Antwort gesendet an {sender}: {antwort}")
+    ctx.logger.info(f"Antwort gesendet an {client}: {antwort}")
 
 # ---------- Agent starten ----------
 if __name__ == "__main__":
