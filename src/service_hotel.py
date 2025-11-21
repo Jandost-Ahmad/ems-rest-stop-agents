@@ -1,19 +1,22 @@
 from uagents import Agent, Context, Model
 import datetime
 
-# ---------- Input-Modell ----------
-class HotelMessage(Model):
-    type: str = "hotel"          # Für Routing im CentralService
-    zimmerart: str               # Anfrage: „Einzelzimmer“, „Doppelzimmer“…
-    zeit: str                    # Uhrzeit der Anfrage
-    naechte: int = 1             # Anzahl der Nächte
-    client_sender: str           # Wohin die Antwort gehen soll
 
-# ---------- Output-Modell ----------
+# ---------- Hotel-Input Modell ----------
+class HotelMessage(Model):
+    type: str
+    zimmerart: str
+    zeit: str
+    naechte: int
+    client_sender: str
+
+
+# ---------- Antwortmodell ----------
 class Message(Model):
-    type: str                    # z.B. "hotel_bestaetigung"
+    type: str
     message: str
-    zeit: str = None
+    zeit: str
+
 
 # ---------- Hotel-Agent ----------
 hotelAgent = Agent(
@@ -29,38 +32,57 @@ zimmer = {
     "familie": 5
 }
 
-print("🏨 Hotel-Service gestartet")
 
-# ---------- Nachricht empfangen ----------
 @hotelAgent.on_message(model=HotelMessage)
 async def hotel_handler(ctx: Context, sender: str, msg: HotelMessage):
-    client = msg.client_sender or sender
+    # msg IST bereits ein HotelMessage → KEIN dict!
+    hotel_msg = msg
+
+    client = hotel_msg.client_sender or sender
 
     # Zeit prüfen
     try:
-        anfrage_zeit = datetime.datetime.strptime(msg.zeit, "%H:%M").time()
+        datetime.datetime.strptime(hotel_msg.zeit, "%H:%M").time()
     except:
-        antwort_text = "❌ Ungültige Zeit. Bitte im Format HH:MM senden."
-        await ctx.send(client, Message(type="hotel_fehler", message=antwort_text, zeit=msg.zeit))
+        await ctx.send(
+            client,
+            Message(
+                type="hotel_fehler",
+                message="❌ Ungültige Zeit. Bitte HH:MM.",
+                zeit=hotel_msg.zeit
+            )
+        )
         return
 
     antwort_text = "❌ Kein geeignetes Zimmer verfügbar."
 
-    zimmerart_lower = msg.zimmerart.lower()
-    if "einzel" in zimmerart_lower and zimmer["einzel"] > 0:
-        zimmer["einzel"] -= 1
-        antwort_text = f"🏨 Einzelzimmer gebucht für {msg.naechte} Nacht/Nächte."
-    elif "doppel" in zimmerart_lower and zimmer["doppel"] > 0:
-        zimmer["doppel"] -= 1
-        antwort_text = f"🏨 Doppelzimmer gebucht für {msg.naechte} Nacht/Nächte."
-    elif ("familie" in zimmerart_lower or "familien" in zimmerart_lower) and zimmer["familie"] > 0:
-        zimmer["familie"] -= 1
-        antwort_text = f"🏨 Familienzimmer gebucht für {msg.naechte} Nacht/Nächte."
+    z = hotel_msg.zimmerart.lower()
 
-    # Antwort an den Client senden
-    await ctx.send(client, Message(type="hotel_bestaetigung", message=antwort_text, zeit=msg.zeit))
+    if "einzel" in z and zimmer["einzel"] > 0:
+        zimmer["einzel"] -= 1
+        antwort_text = f"🏨 Einzelzimmer gebucht für {hotel_msg.naechte} Nacht/Nächte."
+
+    elif "doppel" in z and zimmer["doppel"] > 0:
+        zimmer["doppel"] -= 1
+        antwort_text = f"🏨 Doppelzimmer gebucht für {hotel_msg.naechte} Nacht/Nächte."
+
+    elif ("familie" in z or "familien" in z) and zimmer["familie"] > 0:
+        zimmer["familie"] -= 1
+        antwort_text = f"🏨 Familienzimmer gebucht für {hotel_msg.naechte} Nacht/Nächte."
+
+    # Antwort senden
+    await ctx.send(
+        client,
+        Message(
+            type="hotel_bestaetigung",
+            message=antwort_text,
+            zeit=hotel_msg.zeit
+        )
+    )
+
     ctx.logger.info(f"Antwort an {client} gesendet. Zimmerstatus: {zimmer}")
 
-# ---------- Agent starten ----------
+
 if __name__ == "__main__":
+    print("🏨 Hotel-Service gestartet")
     hotelAgent.run()

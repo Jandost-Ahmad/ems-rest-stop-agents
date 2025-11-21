@@ -1,27 +1,25 @@
-from typing import List
-
-from pydantic import Field
 from uagents import Agent, Context, Model
 from datetime import datetime, timedelta
 import uuid
 
-# ---------- Service-Nachrichten ----------
+
+# ---- IDENTISCHE Models wie CentralService ----
 class EssenMessage(Model):
-    type: str = "essensservice"
+    type: str
     zeit: str
-    standard: int = 0
-    vegetarisch: int = 0
-    vegan: int = 0
-    glutenfrei: int = 0
-    client_sender: str = ""
+    standard: int
+    vegetarisch: int
+    vegan: int
+    glutenfrei: int
+    client_sender: str
 
 class KaffeeMessage(Model):
-    type: str = "kaffee"
-    zeit: str = None
-    client_sender: str = ""
+    type: str
+    zeit: str
+    client_sender: str
 
 class HaustierMessage(Model):
-    type: str = "haustierbetreuung"
+    type: str
     haustierart: str
     zeit: str
     betreuung_von: str
@@ -29,105 +27,103 @@ class HaustierMessage(Model):
     client_sender: str
 
 class HotelMessage(Model):
-    type: str = "hotel"
+    type: str
     zimmerart: str
     zeit: str
-    naechte: int = 1
+    naechte: int
     client_sender: str
 
 class ParkplatzMessage(Model):
-    type: str = "parkplatz"
+    type: str
     fahrzeugart: str
     ladestation: bool
     zeit: str
     reservation_id: str
     client_sender: str
 
+
+class CentralServiceMessage(Model):
+    messages: list
+
+
 class Message(Model):
     type: str
     message: str
-    zeit: str = None
+    zeit: str
 
-# ---------- Zentral-Nachricht ----------
-class CentralServiceMessage(Model):
-    messages: List[Model]  # keine Field() hier
 
-    def __init__(self, **data):
-        # Standard-Liste initialisieren, falls nichts übergeben
-        if "messages" not in data or data["messages"] is None:
-            data["messages"] = []
-        super().__init__(**data)
+# ---------- Adresse des CentralService ----------
+central_service_address = "test-agent://agent1qdxu32w99hg82pmqvulkxttpvqpctvp2vya4w9d2mnl9rhj03mt464747cc"
 
-    def add_message(self, message: Model):
-        self.messages.append(message)
 
-# ---------- Central Service Adresse ----------
-central_service_address = "test-agent://agent1qddjgf6j894fattuq250mfcla8ljvknfmxyndt6uvkdzcpk9ngjck2ltx7v"
-
-# ---------- Test-Agent ----------
 testAgent = Agent(
     name="TestClient",
     port=9100,
-    seed="testClient",
-    endpoint=[central_service_address],
+    seed="testclient",
+    endpoint=["http://localhost:9100/submit"],
 )
 
-# ---------- Antworten empfangen ----------
+
+@testAgent.on_interval(period=10)
+async def send_test_msgs(ctx: Context):
+
+    now = datetime.now()
+    jetzt = now.strftime("%H:%M")
+    in_10_min = (now + timedelta(minutes=10)).strftime("%H:%M")
+
+    messages = [
+        EssenMessage(
+            type="essensservice",
+            zeit=jetzt,
+            standard=1,
+            vegetarisch=2,
+            vegan=0,
+            glutenfrei=1,
+            client_sender=testAgent.address
+        ).dict(),
+
+        KaffeeMessage(
+            type="kaffee",
+            zeit=in_10_min,
+            client_sender=testAgent.address
+        ).dict(),
+
+        HaustierMessage(
+            type="haustierbetreuung",
+            haustierart="Hund",
+            zeit=jetzt,
+            betreuung_von=jetzt,
+            betreuung_bis=in_10_min,
+            client_sender=testAgent.address
+        ).dict(),
+
+        HotelMessage(
+            type="hotel",
+            zimmerart="Einzelzimmer",
+            zeit=jetzt,
+            naechte=2,
+            client_sender=testAgent.address
+        ).dict(),
+
+        ParkplatzMessage(
+            type="parkplatz",
+            fahrzeugart="PKW",
+            ladestation=True,
+            zeit=in_10_min,
+            reservation_id=str(uuid.uuid4())[:8],
+            client_sender=testAgent.address
+        ).dict(),
+    ]
+
+    msg = CentralServiceMessage(messages=messages)
+    print("[Client] Sende Nachrichten an CentralService…")
+    await ctx.send(central_service_address, msg)
+
+
 @testAgent.on_message(model=Message)
-async def response_handler(ctx: Context, sender: str, msg: Message):
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Antwort von {sender}: {msg.type} | {msg.message} | {msg.zeit}")
+async def handle(ctx: Context, sender: str, msg: Message):
+    print(f"[Testclient] {msg.message} {msg.zeit}")
 
-# ---------- Intervall: Nachrichten senden ----------
-@testAgent.on_interval(period=10.0)
-async def send_test_messages(ctx: Context):
-    client_id = testAgent.address
-    jetzt = datetime.now().strftime("%H:%M")
-    in_10_min = (datetime.now() + timedelta(minutes=10)).strftime("%H:%M")
-
-    # Erzeuge alle Service-Nachrichten
-    essen_msg = EssenMessage(
-        zeit=jetzt,
-        standard=2,
-        vegetarisch=1,
-        vegan=1,
-        glutenfrei=0,
-        client_sender=client_id
-    )
-    kaffee_msg = KaffeeMessage(
-        zeit=in_10_min,
-        client_sender=client_id
-    )
-    haustier_msg = HaustierMessage(
-        haustierart="Hund",
-        zeit=jetzt,
-        betreuung_von=jetzt,
-        betreuung_bis=in_10_min,
-        client_sender=client_id
-    )
-    hotel_msg = HotelMessage(
-        zimmerart="Einzelzimmer",
-        zeit=jetzt,
-        naechte=2,
-        client_sender=client_id
-    )
-    parkplatz_msg = ParkplatzMessage(
-        fahrzeugart="PKW",
-        ladestation=True,
-        zeit=in_10_min,
-        reservation_id=str(uuid.uuid4())[:8],
-        client_sender=client_id
-    )
-
-    # Alles in eine CentralServiceMessage packen
-    central_msg = CentralServiceMessage()
-    for msg in [essen_msg, kaffee_msg, haustier_msg, hotel_msg, parkplatz_msg]:
-        central_msg.add_message(msg)
-
-    # Nachricht an den Central Service senden
-    await ctx.send(central_service_address, central_msg)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Gesendet: CentralServiceMessage mit {len(central_msg.messages)} Nachrichten")
-
-# ---------- Agent starten ----------
 if __name__ == "__main__":
-    print("TestClient-Agent startet...")
+    print("[TestClient] gestartet…")
     testAgent.run()

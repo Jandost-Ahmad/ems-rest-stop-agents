@@ -1,124 +1,119 @@
 from uagents import Agent, Context, Model
 import datetime
 
+
 # ---------- Input-Modell ----------
 class HaustierMessage(Model):
-    type: str = "haustierbetreuung"
+    type: str
     haustierart: str
     zeit: str
     betreuung_von: str
     betreuung_bis: str
-    client_sender: str   # Adresse, an die der Agent die Antwort senden soll
+    client_sender: str
+
 
 # ---------- Output-Modell ----------
 class Message(Model):
-    type: str = "haustier_bestaetigung"   # Typ der Antwort
+    type: str
     message: str
-    zeit: str = None
+    zeit: str
 
-# ---------- Kapazitäten ----------
-MAX_HUNDE = 10
-MAX_KATZEN = 20
-
-tiere_status = {
-    "hunde": MAX_HUNDE,
-    "katzen": MAX_KATZEN
-}
-
-# ---------- Öffnungszeiten ----------
-BUCHUNG_BIS = datetime.time(18, 0)   # Buchung nur bis 18:00 Uhr
-CHECKIN_BIS = datetime.time(22, 0)   # Check-In bis 22:00 Uhr
 
 # ---------- Haustier-Agent ----------
 petHotelAgent = Agent(
     name="Haustierbetreuung",
-    port=8020,
+    port=8005,
     seed="petHotelAgent",
-    endpoint=["http://localhost:8020/submit"],
+    endpoint=["http://localhost:8005/submit"],
 )
 
-print("\n🐾 Haustierbetreuung-Service gestartet!")
-print(f"Adresse: {petHotelAgent.address}")
-print(f"Kapazitäten: 🐶 Hunde: {MAX_HUNDE}, 🐱 Katzen: {MAX_KATZEN}\n")
+# Kapazitäten
+kapazitaet = {
+    "hund": 10,
+    "katze": 20
+}
 
-# ---------- Handler ----------
+
 @petHotelAgent.on_message(model=HaustierMessage)
 async def handler(ctx: Context, sender: str, msg: HaustierMessage):
 
     client = msg.client_sender or sender
-    text = msg.haustierart.lower()
 
-    # Uhrzeit prüfen
+    # Zeit prüfen (HH:MM)
     try:
-        jetzt = datetime.datetime.strptime(msg.zeit, "%H:%M").time()
+        datetime.datetime.strptime(msg.zeit, "%H:%M").time()
     except:
-        await ctx.send(client, Message(
-            type="haustier_fehler",
-            message="❌ Ungültige Zeit. Bitte HH:MM angeben.",
-            zeit=msg.zeit
-        ))
+        await ctx.send(
+            client,
+            Message(
+                type="haustier_fehler",
+                message="❌ Ungültige Zeit. Bitte HH:MM.",
+                zeit=msg.zeit
+            )
+        )
         return
 
-    # Betreuungszeiten prüfen
+    # Betreuungs-Zeiten prüfen
     try:
         start = datetime.datetime.strptime(msg.betreuung_von, "%H:%M").time()
         ende = datetime.datetime.strptime(msg.betreuung_bis, "%H:%M").time()
     except:
-        await ctx.send(client, Message(
-            type="haustier_fehler",
-            message="❌ Bitte Zeitraum als HH:MM senden (betreuung_von / betreuung_bis).",
-            zeit=msg.zeit
-        ))
-        return
-
-    # Buchungsschluss prüfen
-    if jetzt > BUCHUNG_BIS:
-        antwort = (
-            f"❌ Buchungen sind nur bis 18:00 möglich.\n"
-            f"Aktuelle Zeit: {msg.zeit}\n"
-            f"Check-In möglich bis {CHECKIN_BIS.strftime('%H:%M')} Uhr."
+        await ctx.send(
+            client,
+            Message(
+                type="haustier_fehler",
+                message="❌ betreuung_von/bis müssen HH:MM sein.",
+                zeit=msg.zeit
+            )
         )
-        await ctx.send(client, Message(type="haustier_fehler", message=antwort, zeit=msg.zeit))
         return
 
-    # Übernacht-Betreuung erkennen
-    ueber_nacht = ende < start
+    art = msg.haustierart.lower()
 
-    # Hundebuchung
-    if "hund" in text:
-        if tiere_status["hunde"] > 0:
-            tiere_status["hunde"] -= 1
+    antwort = "❌ Es sind keine Plätze mehr frei."
+
+    # Hund
+    if "hund" in art:
+        if kapazitaet["hund"] > 0:
+            kapazitaet["hund"] -= 1
             antwort = (
                 f"🐶 Hundebetreuung reserviert!\n"
-                f"⏱️ Zeitraum: {msg.betreuung_von} – {msg.betreuung_bis}"
-                + (" (über Nacht)" if ueber_nacht else "") +
-                f"\nCheck-In bis {CHECKIN_BIS.strftime('%H:%M')} Uhr möglich."
+                f"⏱️ {msg.betreuung_von} – {msg.betreuung_bis}"
             )
-        else:
-            antwort = "❌ Keine Hundeplätze mehr verfügbar."
 
-    # Katzenbuchung
-    elif "katze" in text:
-        if tiere_status["katzen"] > 0:
-            tiere_status["katzen"] -= 1
+        else:
+            antwort = "❌ Keine Hundekapazität mehr verfügbar."
+
+    # Katze
+    elif "katze" in art:
+        if kapazitaet["katze"] > 0:
+            kapazitaet["katze"] -= 1
             antwort = (
                 f"🐱 Katzenbetreuung reserviert!\n"
-                f"⏱️ Zeitraum: {msg.betreuung_von} – {msg.betreuung_bis}"
-                + (" (über Nacht)" if ueber_nacht else "") +
-                f"\nCheck-In bis {CHECKIN_BIS.strftime('%H:%M')} Uhr möglich."
+                f"⏱️ {msg.betreuung_von} – {msg.betreuung_bis}"
             )
+
         else:
-            antwort = "❌ Keine Katzenplätze mehr verfügbar."
+            antwort = "❌ Keine Katzenkapazität mehr verfügbar."
 
     else:
-        antwort = "❌ Bitte angeben, ob Hund oder Katze."
+        antwort = "❌ Bitte 'Hund' oder 'Katze' angeben."
 
-    # Antwort an den Client senden
-    await ctx.send(client, Message(type="haustier_bestaetigung", message=antwort, zeit=msg.zeit))
+    # Antwort senden
+    await ctx.send(
+        client,
+        Message(
+            type="haustier_bestaetigung",
+            message=antwort,
+            zeit=msg.zeit
+        )
+    )
 
-    # Logging
-    ctx.logger.info(f"Hunde frei={tiere_status['hunde']} | Katzen frei={tiere_status['katzen']}")
+    ctx.logger.info(
+        f"Antwort an {client} gesendet | Hund={kapazitaet['hund']} | Katze={kapazitaet['katze']}"
+    )
 
-# ---------- Agent starten ----------
+
 if __name__ == "__main__":
+    print("🐾 Haustierbetreuung gestartet…")
     petHotelAgent.run()

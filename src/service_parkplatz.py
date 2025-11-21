@@ -3,29 +3,53 @@ import uuid
 from datetime import datetime, timedelta
 import re
 
-# ---------- Input-Modell ----------
+
+# ============================================================
+#                     MODELS
+# ============================================================
+
 class ParkplatzMessage(Model):
-    type: str = "parkplatz"
-    fahrzeugart: str        # PKW, PKW_Behindert, LKW, BUS, …
-    ladestation: bool       # True / False
-    zeit: str               # HH:MM oder Minuten
+    type: str
+    fahrzeugart: str
+    ladestation: bool
+    zeit: str
     reservation_id: str
     client_sender: str
 
-# ---------- Output-Modell ----------
-class Message(Model):
-    type: str               # z.B. "parkplatz_reservierung"
-    message: str
-    zeit: str = None
 
-# ---------- Parkplatz-Konfiguration ----------
+class Message(Model):
+    type: str
+    message: str
+    zeit: str
+
+
+# ============================================================
+#                     AGENT
+# ============================================================
+
+parkplatzAgent = Agent(
+    name="ParkplatzService",
+    port=8001,
+    seed="parkplatzAgent",
+    endpoint=["http://localhost:8001/submit"],
+)
+
+print(f"\n🚗 Parkplatz-Service gestartet! Adresse: {parkplatzAgent.address}\n")
+
+
+# ============================================================
+#                     PARKPLATZ-KONFIGURATION
+# ============================================================
+
 pkw_total = 100
 pkw_lade_total = 50
 lkw_total = 300
 bus_total = 3
 
+
 def two_percent(x):
     return max(1, round(x * 0.02))
+
 
 behindert_pkw_ohne_lade = two_percent(pkw_total)
 behindert_pkw_mit_lade = two_percent(pkw_total)
@@ -35,7 +59,9 @@ pkw_rest = pkw_total - behindert_pkw_ohne_lade - behindert_pkw_mit_lade
 pkw_lade = min(pkw_lade_total, pkw_rest)
 pkw_frei = pkw_rest - pkw_lade
 
+# ❗ Hier fehlte die Zeile
 lkw_lade = lkw_total - behindert_lkw_mit_lade
+
 bus_lade = bus_total
 
 parkplatz_status = {
@@ -46,22 +72,19 @@ parkplatz_status = {
     "BUS": {"lade": bus_lade}
 }
 
-# ---------- Agent ----------
-parkplatzAgent = Agent(
-    name="ParkplatzAgent",
-    port=8001,
-    seed="parkplatzAgent",
-    endpoint=["http://localhost:8001/submit"],
-)
 
-print("\nParkplatz-Agent gestartet:")
-for k, v in parkplatz_status.items():
-    print(f"{k}: {v}")
 
-# ---------- Reservierungen ----------
+# ============================================================
+#                     RESERVIERUNGEN
+# ============================================================
+
 reservations = {}
 
-# ---------- Helper ----------
+
+# ============================================================
+#                     HELPER-FUNKTIONEN
+# ============================================================
+
 def parse_time_field(zeit_str: str):
     if not zeit_str:
         return None
@@ -78,8 +101,10 @@ def parse_time_field(zeit_str: str):
         return datetime.now() + timedelta(minutes=int(zeit_str))
     return None
 
+
 def total_pkw_available():
     return parkplatz_status["PKW"]["frei"] + parkplatz_status["PKW"]["lade"]
+
 
 def consume_pkw_slots(n: int):
     consumed = 0
@@ -93,6 +118,7 @@ def consume_pkw_slots(n: int):
         consumed += take2
     return consumed
 
+
 def try_allocate_lkw():
     if parkplatz_status["LKW"]["lade"] > 0:
         parkplatz_status["LKW"]["lade"] -= 1
@@ -104,73 +130,118 @@ def try_allocate_lkw():
         return True, "🚚 (Fallback) 3× PKW → LKW-Platz reserviert."
     return False, None
 
-# ---------- Handler ----------
+
+# ============================================================
+#                     MAIN HANDLER
+# ============================================================
+
 @parkplatzAgent.on_message(model=ParkplatzMessage)
-async def message_handler(ctx: Context, sender: str, msg: ParkplatzMessage):
+async def parkplatz_handler(ctx: Context, sender: str, msg: ParkplatzMessage):
+
     fahrzeugart = msg.fahrzeugart.lower()
     lade = bool(msg.ladestation)
     client = msg.client_sender or sender
+
     antwort = "❌ Kein geeigneter Parkplatz verfügbar."
     rid = None
 
-    # ---- Fahrzeuglogik ----
+    # ============================================================
+    #               PKW BEHINDERT
+    # ============================================================
     if "pkw" in fahrzeugart and "behindert" in fahrzeugart:
+
         if lade and parkplatz_status["PKW_Behindert"]["lade"] > 0:
             parkplatz_status["PKW_Behindert"]["lade"] -= 1
             antwort = "♿🔌 Behinderten-PKW-Ladeparkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
+
         elif not lade and parkplatz_status["PKW_Behindert"]["frei"] > 0:
             parkplatz_status["PKW_Behindert"]["frei"] -= 1
             antwort = "♿ PKW-Behindertenparkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
+
         elif total_pkw_available() >= 2 and consume_pkw_slots(2) == 2:
             antwort = "♿ (Fallback) 2× PKW → Behindertenplatz reserviert."
             rid = str(uuid.uuid4())[:8]
 
+
+    # ============================================================
+    #               PKW NORMAL
+    # ============================================================
     elif "pkw" in fahrzeugart:
+
         if lade and parkplatz_status["PKW"]["lade"] > 0:
             parkplatz_status["PKW"]["lade"] -= 1
             antwort = "🔌🚗 PKW-Ladeparkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
+
         elif not lade and parkplatz_status["PKW"]["frei"] > 0:
             parkplatz_status["PKW"]["frei"] -= 1
             antwort = "🚗 PKW-Parkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
 
+
+    # ============================================================
+    #               LKW BEHINDERT
+    # ============================================================
     elif "lkw" in fahrzeugart and "behindert" in fahrzeugart:
+
         if parkplatz_status["LKW_Behindert"]["lade"] > 0:
             parkplatz_status["LKW_Behindert"]["lade"] -= 1
             antwort = "♿🚚🔌 Behinderten-LKW-Parkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
+
         else:
             ok, msg2 = try_allocate_lkw()
             if ok:
                 antwort = "♿🚚 (Fallback) " + msg2
                 rid = str(uuid.uuid4())[:8]
 
+
+    # ============================================================
+    #               LKW NORMAL
+    # ============================================================
     elif "lkw" in fahrzeugart:
+
         ok, msg2 = try_allocate_lkw()
         if ok:
             antwort = msg2
             rid = str(uuid.uuid4())[:8]
 
+
+    # ============================================================
+    #               BUS
+    # ============================================================
     elif "bus" in fahrzeugart:
+
         if parkplatz_status["BUS"]["lade"] > 0:
             parkplatz_status["BUS"]["lade"] -= 1
             antwort = "🚌🔌 Bus-Parkplatz reserviert."
             rid = str(uuid.uuid4())[:8]
 
-    # ---- Antwort an Client senden ----
+
+    # ============================================================
+    #              SEND RESPONSE BACK TO CLIENT
+    # ============================================================
+
     await ctx.send(
         client,
         Message(
-            type="parkplatz_reservierung",
+            type="parkplatz_bestaetigung",
             message=antwort + (f" (RID={rid})" if rid else ""),
             zeit=msg.zeit
         )
     )
 
-    # ---- Reservierung speichern ----
+    # Logging
+    ctx.logger.info(
+        f"[Parkplatz] Gesendet an {client} | Antwort: '{antwort}' | RID={rid or '-'}"
+    )
+
+    # ============================================================
+    #              SAVE RESERVATION IF VALID
+    # ============================================================
+
     if rid:
         end_dt = parse_time_field(msg.zeit) or (datetime.now() + timedelta(minutes=60))
         reservations[rid] = {
@@ -179,9 +250,14 @@ async def message_handler(ctx: Context, sender: str, msg: ParkplatzMessage):
             "reminder_sent": False
         }
 
-# ---------- Reminder & Expire ----------
+
+# ============================================================
+#             REMINDER + EXPIRATION LOOP
+# ============================================================
+
 @parkplatzAgent.on_interval(period=30.0)
 async def reservation_maintenance(ctx: Context):
+
     REMINDER_MINUTES = 5
     now = datetime.now()
     expired = []
@@ -189,23 +265,34 @@ async def reservation_maintenance(ctx: Context):
     for rid, r in reservations.items():
         end = r["end"]
 
+        # Reminder
         if not r["reminder_sent"] and now + timedelta(minutes=REMINDER_MINUTES) >= end > now:
             await ctx.send(
                 r["sender"],
-                Message(type="parkplatz_reminder", message=f"⏰ Ihre Reservierung {rid} läuft um {end.strftime('%H:%M')} ab.")
+                Message(type="parkplatz_reminder",
+                        message=f"⏰ Ihre Reservierung {rid} läuft um {end.strftime('%H:%M')} ab.",
+                        zeit=end.strftime("%H:%M"))
             )
             r["reminder_sent"] = True
 
+        # Ablauf
         if now >= end:
             expired.append(rid)
 
+    # Abgelaufene Reservierungen löschen
     for rid in expired:
         data = reservations.pop(rid)
         await ctx.send(
             data["sender"],
-            Message(type="parkplatz_abgelaufen", message=f"❗ Ihre Reservierung {rid} ist abgelaufen und wurde freigegeben.")
+            Message(type="parkplatz_abgelaufen",
+                    message=f"❗ Ihre Reservierung {rid} ist abgelaufen und wurde freigegeben.",
+                    zeit=datetime.now().strftime("%H:%M"))
         )
 
-# ---------- Agent starten ----------
+
+# ============================================================
+#                     START
+# ============================================================
+
 if __name__ == "__main__":
     parkplatzAgent.run()
