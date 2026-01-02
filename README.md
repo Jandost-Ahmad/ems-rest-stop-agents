@@ -1,270 +1,386 @@
 <!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
 <a name="readme-top"></a>
-<!--
-*** Thanks for checking out the Best-README-Template. If you have a suggestion
-*** that would make this better, please fork the repo and create a pull request
-*** or simply open an issue with the tag "enhancement".
-*** Don't forget to give the project a star!
-*** Thanks again! Now go create something AMAZING! :D
--->
-
-
-
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
-
 
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
+  <a href="https://github.com/your_username/ems-rest-stop-agents">
+    <img src="images/logo.png" alt="Logo" width="120" height="120">
   </a>
 
-  <h3 align="center">Best-README-Template</h3>
+  <h3 align="center">🚗 EMS Rest-Stop Agents</h3>
 
   <p align="center">
-    An awesome README template to jumpstart your projects!
+    Intelligentes Multi-Agenten-System für Autobahn-Raststätten
     <br />
-    <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
+    Mit GUI, Voice Assistant und automatisierten Services
+    <br />
+    <a href="#getting-started"><strong>Jetzt starten »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/othneildrew/Best-README-Template">View Demo</a>
+    <a href="#features">Features</a>
     ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Report Bug</a>
+    <a href="#installation">Installation</a>
     ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Request Feature</a>
+    <a href="#usage">Verwendung</a>
+    ·
+    <a href="#architecture">Architektur</a>
   </p>
 </div>
 
+<!-- SCREENSHOT -->
+<div align="center">
+  <img src="images/screenshot.png" alt="GUI Screenshot" width="800">
+  <p><em>Futuristische GUI für Fahrer-Assistenz</em></p>
+</div>
 
+---
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-  </ol>
-</details>
+## 📋 Inhaltsverzeichnis
 
+- [Über das Projekt](#about-the-project)
+- [Features](#features)
+- [Voraussetzungen](#prerequisites)
+- [Installation](#installation)
+- [Verwendung](#usage)
+- [Architektur](#architecture)
+- [Agenten-Übersicht](#agent-overview)
+- [Voice Assistant](#voice-assistant)
+- [Troubleshooting](#troubleshooting)
+- [Lizenz](#license)
 
+---
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+<a name="about-the-project"></a>
+## 🎯 Über das Projekt
 
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
+**EMS Rest-Stop Agents** ist ein intelligentes Multi-Agenten-System für Autobahn-Raststätten, das Fahrern hilft, verschiedene Services zu buchen:
 
-There are many great README templates available on GitHub; however, I didn't find one that really suited my needs so I created this enhanced one. I want to create a README template so amazing that it'll be the last one you ever need -- I think this is it.
+- 🚗 **Parkplatz-Reservierung** (PKW, LKW, Bus mit/ohne Ladesäule)
+- 🍽️ **Essensbestellung** (Standard, Vegetarisch, Vegan, Glutenfrei)
+- 🏨 **Hotel-Zimmerbuchung** (Einzel, Doppel, Familie)
+- ☕ **Kaffee-Bestellung**
+- 🐾 **Haustierbetreuung** (Hund, Katze)
 
-Here's why:
-* Your time should be focused on creating something amazing. A project that solves a problem and helps others
-* You shouldn't be doing the same tasks over and over like creating a README from scratch
-* You should implement DRY principles to the rest of your life :smile:
+Das System bietet **zwei Interaktionsmöglichkeiten**:
+1. **Futuristische GUI** mit CustomTkinter
+2. **Voice Assistant** mit Sprachsteuerung (Whisper STT + Piper TTS)
 
-Of course, no one template will serve all projects since your needs may be different. So I'll be adding more in the near future. You may also suggest changes by forking this repo and creating a pull request or opening an issue. Thanks to all the people have contributed to expanding this template!
+---
 
-Use the `BLANK_README.md` to get started.
+<a name="features"></a>
+## ✨ Features
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+- 🤖 **Multi-Agenten-Architektur** mit uAgents Framework
+- 🎨 **Moderne GUI** mit CustomTkinter (Dark Theme)
+- 🎤 **Voice Assistant** mit Wake-Word-Erkennung
+- 🧠 **LLM-basierte Intent-Klassifikation** (Ollama)
+- 📡 **Central Service** für Nachrichten-Routing
+- ⚡ **Echtzeit-Kommunikation** zwischen Agenten
+- 🔔 **Automatische Erinnerungen** für Reservierungen
+- 📊 **Service-Status-Tracking**
 
+---
 
+<a name="prerequisites"></a>
+## 📦 Voraussetzungen
 
-### Built With
+### System-Anforderungen
+- **Python 3.10+**
+- **Windows/Linux/macOS**
+- **Mikrofon** (für Voice Assistant)
+- **Lautsprecher/Kopfhörer** (für Voice Assistant)
 
-This section should list any major frameworks/libraries used to bootstrap your project. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
+### Externe Tools (optional für Voice Assistant)
+- **Ollama** (für LLM-Intent-Klassifikation)
+  - Download: https://ollama.ai
+  - Empfohlenes Modell: `gpt-oss:20b-cloud` oder `deepseek-v3.1:671b-cloud`
+- **Piper TTS** (für Text-to-Speech)
+  - Download: https://github.com/rhasspy/piper
+  - Deutsch-Modell: `de_DE-thorsten-low.onnx`
 
-* [![Next][Next.js]][Next-url]
-* [![React][React.js]][React-url]
-* [![Vue][Vue.js]][Vue-url]
-* [![Angular][Angular.io]][Angular-url]
-* [![Svelte][Svelte.dev]][Svelte-url]
-* [![Laravel][Laravel.com]][Laravel-url]
-* [![Bootstrap][Bootstrap.com]][Bootstrap-url]
-* [![JQuery][JQuery.com]][JQuery-url]
+---
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+<a name="installation"></a>
+## 🚀 Installation
 
+### 1. Repository klonen
 
+```bash
+git clone https://github.com/your_username/ems-rest-stop-agents.git
+cd ems-rest-stop-agents
+```
 
-<!-- GETTING STARTED -->
-## Getting Started
+### 2. Virtuelles Environment erstellen
 
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
+**Windows (PowerShell):**
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
 
-### Prerequisites
+**Linux/macOS:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
+### 3. Dependencies installieren
 
-### Installation
+```bash
+pip install --upgrade pip
+pip install uagents
+pip install customtkinter
+pip install pillow
 
-_Below is an example of how you can instruct your audience on installing and setting up your app. This template doesn't rely on any external dependencies or services._
+# Für Voice Assistant (optional):
+pip install faster-whisper
+pip install sounddevice
+pip install soundfile
+pip install numpy
+pip install requests
+```
 
-1. Get a free API Key at [https://example.com](https://example.com)
-2. Clone the repo
-   ```sh
-   git clone https://github.com/your_username_/Project-Name.git
-   ```
-3. Install NPM packages
-   ```sh
-   npm install
-   ```
-4. Enter your API in `config.js`
-   ```js
-   const API_KEY = 'ENTER YOUR API';
-   ```
+### 4. Ollama einrichten (nur für Voice Assistant)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+1. Ollama installieren: https://ollama.ai
+2. Modell herunterladen:
+```bash
+ollama pull gpt-oss:20b-cloud
+# oder
+ollama pull deepseek-v3.1:671b-cloud
+```
 
+### 5. Piper TTS einrichten (nur für Voice Assistant)
 
+1. Piper herunterladen: https://github.com/rhasspy/piper/releases
+2. Deutsch-Modell herunterladen: `de_DE-thorsten-low.onnx`
+3. In `Agent_Fahrer/piper_voices/` ablegen
+4. Piper in PATH aufnehmen oder Pfad in `voice_assistant.py` anpassen
 
-<!-- USAGE EXAMPLES -->
-## Usage
+---
 
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
+<a name="usage"></a>
+## 🎮 Verwendung
 
-_For more examples, please refer to the [Documentation](https://example.com)_
+### ⚠️ WICHTIG: Start-Reihenfolge
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Die Agenten **müssen** in dieser Reihenfolge gestartet werden:
 
+### Schritt 1: Central Service starten
 
+```bash
+python Agent_Services/Central_Services/service_central.py
+```
 
-<!-- ROADMAP -->
-## Roadmap
+**WICHTIG:** Kopiere die ausgegebene **Agent-Adresse** (z.B. `test-agent://agent1q...`)
 
-- [x] Add Changelog
-- [x] Add back to top links
-- [ ] Add Additional Templates w/ Examples
-- [ ] Add "components" document to easily copy & paste sections of the readme
-- [ ] Multi-language Support
-    - [ ] Chinese
-    - [ ] Spanish
+### Schritt 2: Service-Agenten starten
 
-See the [open issues](https://github.com/othneildrew/Best-README-Template/issues) for a full list of proposed features (and known issues).
+**In separaten Terminal-Fenstern:**
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+```bash
+# Parkplatz-Service
+python Agent_Services/Buchung_Service/service_parkplatz.py
 
+# Essensservice
+python Agent_Services/Buchung_Service/service_essen.py
 
+# Kaffee-Service
+python Agent_Services/Buchung_Service/service_kaffee.py
 
-<!-- CONTRIBUTING -->
-## Contributing
+# Hotel-Service
+python Agent_Services/Buchung_Service/service_hotel.py
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+# Haustierbetreuung
+python Agent_Services/Buchung_Service/service_haustierbetreuung.py
+```
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
+### Schritt 3: Client-Agenten starten
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+**Option A: GUI starten**
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+```bash
+python Agent_Fahrer/fahrer_gui.py
+```
 
+**Option B: Voice Assistant starten**
 
+```bash
+python Agent_Fahrer/voice_assistant.py
+```
 
-<!-- LICENSE -->
-## License
+---
+
+### 🔧 Konfiguration
+
+#### Central Service Adresse aktualisieren
+
+Nach dem Start des Central Service musst du die Adresse in folgenden Dateien eintragen:
+
+1. **`Agent_Fahrer/fahrer_gui.py`** (Zeile ~155):
+```python
+CENTRAL_SERVICE_ADDRESS = "test-agent://agent1q..."  # Hier eintragen
+```
+
+2. **`Agent_Fahrer/voice_assistant.py`** (Zeile ~96):
+```python
+CENTRAL_SERVICE_ADDRESS = "test-agent://agent1q..."  # Hier eintragen
+```
+
+---
+
+<a name="architecture"></a>
+## 🏗️ Architektur
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CLIENT LAYER                              │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐         ┌──────────────┐                 │
+│  │  GUI Client  │         │ Voice Client │                 │
+│  │  (Port 8003) │         │  (Port 8002)│                 │
+│  └──────┬───────┘         └──────┬───────┘                 │
+│         │                        │                          │
+│         └────────────┬───────────┘                          │
+│                      │                                      │
+│                      ▼                                      │
+│         ┌────────────────────────┐                          │
+│         │   Central Service      │                          │
+│         │     (Port 8000)        │                          │
+│         └───────────┬───────────┘                          │
+└──────────────────────┼──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  SERVICE LAYER                               │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │Parkplatz │  │  Essen   │  │  Kaffee  │  │  Hotel   │  │
+│  │  :8001   │  │  :8007   │  │  :8008   │  │  :8009   │  │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  │
+│                                                              │
+│  ┌──────────┐                                               │
+│  │ Haustier │                                               │
+│  │  :8010   │                                               │
+│  └──────────┘                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+<a name="agent-overview"></a>
+## 🤖 Agenten-Übersicht
+
+| Agent | Port | Beschreibung |
+|-------|------|--------------|
+| **Central Service** | 8000 | Routet Nachrichten an die Services |
+| **Parkplatz** | 8001 | Verwaltet Parkplatz-Reservierungen |
+| **Voice Assistant** | 8002 | Sprachsteuerung für Fahrer |
+| **Fahrer GUI** | 8003 | Grafische Benutzeroberfläche |
+| **Essensservice** | 8007 | Verwaltet Essensbestellungen |
+| **Kaffee** | 8008 | Verwaltet Kaffee-Bestellungen |
+| **Hotel** | 8009 | Verwaltet Hotel-Zimmerbuchungen |
+| **Haustierbetreuung** | 8010 | Verwaltet Haustierbetreuung |
+
+---
+
+<a name="voice-assistant"></a>
+## 🎤 Voice Assistant
+
+### Funktionsweise
+
+1. **Wake Word**: Sage "Hallo" um den Assistant zu aktivieren
+2. **Anfrage**: Sprich deine Anfrage (z.B. "Ich brauche einen PKW-Parkplatz mit Ladesäule")
+3. **Verarbeitung**:
+   - **STT**: Faster-Whisper transkribiert deine Sprache
+   - **Intent-Klassifikation**: LLM (Ollama) erkennt die Absicht
+   - **Nachricht**: Wird an Central Service gesendet
+4. **Antwort**: Service-Antworten werden per TTS (Piper) vorgelesen
+
+### Beispiel-Anfragen
+
+- "Ich brauche einen PKW-Parkplatz mit Ladesäule für zwei Stunden"
+- "Ich möchte ein veganes Essen zum Mitnehmen bestellen"
+- "Reserviere mir bitte ein Einzelzimmer für zwei Nächte"
+- "Ich brauche Kaffee to go"
+- "Könnt ihr euch um meinen Hund kümmern?"
+
+### Konfiguration
+
+In `Agent_Fahrer/voice_assistant.py`:
+
+```python
+# Wake Word
+WAKE_WORD = "Hallo"
+
+# Ollama-Modell
+model = "gpt-oss:20b-cloud"  # oder "deepseek-v3.1:671b-cloud"
+
+# Piper TTS
+PIPER_MODEL_PATH = "piper_voices/de_DE-thorsten-low.onnx"
+```
+
+---
+
+<a name="troubleshooting"></a>
+## 🔧 Troubleshooting
+
+### Port bereits belegt
+
+**Fehler:** `Address already in use`
+
+**Lösung:** 
+- Prüfe, welche Prozesse die Ports belegen
+- Windows: `netstat -ano | findstr :8000`
+- Linux: `lsof -i :8000`
+- Beende den Prozess oder ändere den Port in der Konfiguration
+
+### Central Service Adresse nicht gefunden
+
+**Fehler:** `Failed to connect`
+
+**Lösung:**
+- Stelle sicher, dass Central Service läuft
+- Kopiere die **exakte** Agent-Adresse aus der Ausgabe
+- Aktualisiere `CENTRAL_SERVICE_ADDRESS` in GUI/Voice Assistant
+
+### Voice Assistant hört nicht
+
+**Lösung:**
+- Prüfe Mikrofon-Berechtigungen
+- Teste Mikrofon mit anderen Apps
+- Prüfe `sounddevice` Installation: `python -c "import sounddevice; print(sounddevice.query_devices())"`
+
+### Ollama-Verbindungsfehler
+
+**Fehler:** `Connection refused` oder `Model not found`
+
+**Lösung:**
+- Stelle sicher, dass Ollama läuft: `ollama list`
+- Prüfe Modell-Name in `intent_classifier.py`
+- Teste Ollama-API: `curl http://localhost:11434/api/tags`
+
+### Piper TTS funktioniert nicht
+
+**Lösung:**
+- Prüfe, ob Piper installiert ist: `piper --version`
+- Prüfe Modell-Pfad in `voice_assistant.py`
+- Stelle sicher, dass `piper_voices/` Ordner existiert
+
+---
+
+<a name="license"></a>
+## 📄 Lizenz
 
 Distributed under the MIT License. See `LICENSE.txt` for more information.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+---
 
+## 👥 Kontakt
 
+**Projekt-Link:** [https://github.com/your_username/ems-rest-stop-agents](https://github.com/your_username/ems-rest-stop-agents)
 
-<!-- CONTACT -->
-## Contact
+---
 
-Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-Use this space to list resources you find helpful and would like to give credit to. I've included a few of my favorites to kick things off!
-
-* [Choose an Open Source License](https://choosealicense.com)
-* [GitHub Emoji Cheat Sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet)
-* [Malven's Flexbox Cheatsheet](https://flexbox.malven.co/)
-* [Malven's Grid Cheatsheet](https://grid.malven.co/)
-* [Img Shields](https://shields.io)
-* [GitHub Pages](https://pages.github.com)
-* [Font Awesome](https://fontawesome.com)
-* [React Icons](https://react-icons.github.io/react-icons/search)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/othneildrew/Best-README-Template.svg?style=for-the-badge
-[contributors-url]: https://github.com/othneildrew/Best-README-Template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/othneildrew/Best-README-Template.svg?style=for-the-badge
-[forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-shield]: https://img.shields.io/github/stars/othneildrew/Best-README-Template.svg?style=for-the-badge
-[stars-url]: https://github.com/othneildrew/Best-README-Template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/othneildrew/Best-README-Template.svg?style=for-the-badge
-[issues-url]: https://github.com/othneildrew/Best-README-Template/issues
-[license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=for-the-badge
-[license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/othneildrew
-[product-screenshot]: images/screenshot.png
-[Next.js]: https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white
-[Next-url]: https://nextjs.org/
-[React.js]: https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
-[React-url]: https://reactjs.org/
-[Vue.js]: https://img.shields.io/badge/Vue.js-35495E?style=for-the-badge&logo=vuedotjs&logoColor=4FC08D
-[Vue-url]: https://vuejs.org/
-[Angular.io]: https://img.shields.io/badge/Angular-DD0031?style=for-the-badge&logo=angular&logoColor=white
-[Angular-url]: https://angular.io/
-[Svelte.dev]: https://img.shields.io/badge/Svelte-4A4A55?style=for-the-badge&logo=svelte&logoColor=FF3E00
-[Svelte-url]: https://svelte.dev/
-[Laravel.com]: https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white
-[Laravel-url]: https://laravel.com
-[Bootstrap.com]: https://img.shields.io/badge/Bootstrap-563D7C?style=for-the-badge&logo=bootstrap&logoColor=white
-[Bootstrap-url]: https://getbootstrap.com
-[JQuery.com]: https://img.shields.io/badge/jQuery-0769AD?style=for-the-badge&logo=jquery&logoColor=white
-[JQuery-url]: https://jquery.com 
+<p align="right">(<a href="#readme-top">nach oben</a>)</p>
