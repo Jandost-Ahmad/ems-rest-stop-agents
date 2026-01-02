@@ -5,7 +5,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/your_username/ems-rest-stop-agents">
-    <img src="images/logo.png" alt="Logo" width="120" height="120">
+    <img src="images/logoDaino.png" alt="Logo" width="120" height="120">
   </a>
 
   <h3 align="center">🚗 EMS Rest-Stop Agents</h3>
