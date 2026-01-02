@@ -19,9 +19,9 @@ class Message(Model):
 # ---------- Agent ----------
 kaffeeAgent = Agent(
     name="KaffeeService",
-    port=8003,
+    port=8008,
     seed="kaffeeServiceAgent",
-    endpoint=["http://localhost:8003/submit"],
+    endpoint=["http://localhost:8008/submit"],
 )
 
 
@@ -50,4 +50,6 @@ async def kaffee_handler(ctx: Context, sender: str, msg: KaffeeMessage):
 
 
 if __name__ == "__main__":
+    print("☕ Kaffee-Service gestartet…")
+    print(f"📍 Adresse: {kaffeeAgent.address}")
     kaffeeAgent.run()

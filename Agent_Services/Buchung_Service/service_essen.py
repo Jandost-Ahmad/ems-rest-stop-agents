@@ -23,9 +23,9 @@ class Message(Model):
 # ---------- Agent ----------
 essensserviceAgent = Agent(
     name="Essensservice",
-    port=8002,
+    port=8007,
     seed="essensserviceAgent",
-    endpoint=["http://localhost:8002/submit"],
+    endpoint=["http://localhost:8007/submit"],
 )
 
 
@@ -100,4 +100,6 @@ async def essen_handler(ctx: Context, sender: str, msg: EssenMessage):
 
 
 if __name__ == "__main__":
+    print("🍽️ Essensservice gestartet…")
+    print(f"📍 Adresse: {essensserviceAgent.address}")
     essensserviceAgent.run()

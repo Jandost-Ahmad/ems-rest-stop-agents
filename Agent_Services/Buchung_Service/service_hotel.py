@@ -21,9 +21,9 @@ class Message(Model):
 # ---------- Hotel-Agent ----------
 hotelAgent = Agent(
     name="HotelService",
-    port=8004,
+    port=8009,
     seed="hotelServiceAgent",
-    endpoint=["http://localhost:8004/submit"],
+    endpoint=["http://localhost:8009/submit"],
 )
 
 zimmer = {
@@ -84,5 +84,6 @@ async def hotel_handler(ctx: Context, sender: str, msg: HotelMessage):
 
 
 if __name__ == "__main__":
-    print("🏨 Hotel-Service gestartet")
+    print("🏨 Hotel-Service gestartet…")
+    print(f"📍 Adresse: {hotelAgent.address}")
     hotelAgent.run()

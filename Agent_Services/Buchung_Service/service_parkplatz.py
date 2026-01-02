@@ -34,7 +34,13 @@ parkplatzAgent = Agent(
     endpoint=["http://localhost:8001/submit"],
 )
 
-print(f"\n🚗 Parkplatz-Service gestartet! Adresse: {parkplatzAgent.address}\n")
+print("=" * 60)
+print("🚗 PARKPLATZ-SERVICE GESTARTET")
+print("=" * 60)
+print(f"📍 Agent-Adresse: {parkplatzAgent.address}")
+print(f"🌐 Endpoint: http://localhost:8001/submit")
+print("=" * 60)
+print()
 
 
 # ============================================================

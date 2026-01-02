@@ -76,7 +76,7 @@ central = Agent(
 @central.on_message(model=CentralServiceMessage)
 async def handle(ctx: Context, sender: str, msg: CentralServiceMessage):
 
-    print(f"[Central] {len(msg.messages)} Nachrichten erhalten")
+    print(f"\n📨 [Central] {len(msg.messages)} Nachricht(en) erhalten von {sender[:20]}...")
 
     for entry in msg.messages:
 
@@ -84,22 +84,33 @@ async def handle(ctx: Context, sender: str, msg: CentralServiceMessage):
         target = service_map.get(msg_type)
 
         if not target:
-            print(f"[Central] Kein Ziel für Typ {msg_type}")
+            print(f"❌ [Central] Kein Ziel für Typ '{msg_type}'")
             continue
 
         constructor = model_factory.get(msg_type)
         if not constructor:
-            print(f"[Central] Kein Model-Constructor für Typ {msg_type}")
+            print(f"❌ [Central] Kein Model-Constructor für Typ '{msg_type}'")
             continue
 
         # dict -> spezifisches Model konvertieren
-        reconstructed = constructor(**entry)
-
-        print(f"[Central] Weiterleiten an {msg_type} ({target})")
-
-        await ctx.send(target, reconstructed)
+        try:
+            reconstructed = constructor(**entry)
+            print(f"✅ [Central] Weiterleiten an {msg_type} → {target[:40]}...")
+            await ctx.send(target, reconstructed)
+        except Exception as e:
+            print(f"❌ [Central] Fehler beim Verarbeiten von {msg_type}: {e}")
 
 
 if __name__ == "__main__":
-    print("[CentralService] gestartet…")
+    print("=" * 60)
+    print("🚀 CENTRAL SERVICE GESTARTET")
+    print("=" * 60)
+    print(f"📍 Agent-Adresse: {central.address}")
+    print(f"🌐 Endpoint: http://localhost:8000/submit")
+    print("=" * 60)
+    print("\n⚠️  WICHTIG: Kopiere die Agent-Adresse oben in:")
+    print("   - Agent_Fahrer/fahrer_gui.py (CENTRAL_SERVICE_ADDRESS)")
+    print("   - Agent_Fahrer/voice_assistant.py (CENTRAL_SERVICE_ADDRESS)")
+    print("=" * 60)
+    print()
     central.run()

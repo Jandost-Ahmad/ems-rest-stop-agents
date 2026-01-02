@@ -22,9 +22,9 @@ class Message(Model):
 # ---------- Haustier-Agent ----------
 petHotelAgent = Agent(
     name="Haustierbetreuung",
-    port=8005,
+    port=8010,
     seed="petHotelAgent",
-    endpoint=["http://localhost:8005/submit"],
+    endpoint=["http://localhost:8010/submit"],
 )
 
 # Kapazitäten
@@ -116,4 +116,5 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
 
 if __name__ == "__main__":
     print("🐾 Haustierbetreuung gestartet…")
+    print(f"📍 Adresse: {petHotelAgent.address}")
     petHotelAgent.run()

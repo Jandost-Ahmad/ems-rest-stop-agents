@@ -15,6 +15,8 @@
     <br />
     Mit GUI, Voice Assistant und automatisierten Services
     <br />
+    <a href="https://jandost-ahmad.github.io/ems-webseit/" target="_blank"><strong>🌐 Webseite besuchen »</strong></a>
+    ·
     <a href="#getting-started"><strong>Jetzt starten »</strong></a>
     <br />
     <br />
@@ -28,9 +30,17 @@
   </p>
 </div>
 
-<!-- SCREENSHOT -->
+<!-- WEBSITE SCREENSHOT -->
 <div align="center">
-  <img src="images/screenshot.png" alt="GUI Screenshot" width="800">
+  <a href="https://jandost-ahmad.github.io/ems-webseit/" target="_blank">
+    <img src="images/webseit.png" alt="DAINO Webseite" width="900">
+  </a>
+  <p><em><a href="https://jandost-ahmad.github.io/ems-webseit/" target="_blank">🌐 DAINO Webseite besuchen</a> - "Starke Pause für Ihre Reise"</em></p>
+</div>
+
+<!-- GUI SCREENSHOT -->
+<div align="center">
+  <img src="images/GUI.png" alt="GUI Screenshot" width="900">
   <p><em>Futuristische GUI für Fahrer-Assistenz</em></p>
 </div>
 
@@ -48,6 +58,7 @@
 - [Voice Assistant](#voice-assistant)
 - [Troubleshooting](#troubleshooting)
 - [Lizenz](#license)
+- [Kontakt & Links](#kontakt--links)
 
 ---
 
@@ -61,6 +72,7 @@
 - 🏨 **Hotel-Zimmerbuchung** (Einzel, Doppel, Familie)
 - ☕ **Kaffee-Bestellung**
 - 🐾 **Haustierbetreuung** (Hund, Katze)
+- 🧥 **Garderobe-Service** (digitale/physische Token)
 
 Das System bietet **zwei Interaktionsmöglichkeiten**:
 1. **Futuristische GUI** mit CustomTkinter
@@ -194,6 +206,9 @@ python Agent_Services/Buchung_Service/service_hotel.py
 
 # Haustierbetreuung
 python Agent_Services/Buchung_Service/service_haustierbetreuung.py
+
+# Garderobe-Service
+python Agent_Services/Garderobe_Service/service_garderobe.py
 ```
 
 ### Schritt 3: Client-Agenten starten
@@ -237,33 +252,36 @@ CENTRAL_SERVICE_ADDRESS = "test-agent://agent1q..."  # Hier eintragen
 ┌─────────────────────────────────────────────────────────────┐
 │                    CLIENT LAYER                              │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐         ┌──────────────┐                 │
-│  │  GUI Client  │         │ Voice Client │                 │
-│  │  (Port 8003) │         │  (Port 8002)│                 │
-│  └──────┬───────┘         └──────┬───────┘                 │
-│         │                        │                          │
-│         └────────────┬───────────┘                          │
-│                      │                                      │
-│                      ▼                                      │
-│         ┌────────────────────────┐                          │
-│         │   Central Service      │                          │
-│         │     (Port 8000)        │                          │
-│         └───────────┬───────────┘                          │
-└──────────────────────┼──────────────────────────────────────┘
-                       │
-                       ▼
+│                                                              │
+│  ┌──────────────┐                    ┌──────────────┐       │
+│  │  GUI Client  │                    │ Voice Client │       │
+│  │  (Port 8003) │                    │  (Port 8002) │       │
+│  └──────┬───────┘                    └──────┬───────┘       │
+│         │                                    │               │
+│         └──────────────┬─────────────────────┘               │
+│                        │                                     │
+│                        ▼                                     │
+│              ┌──────────────────────┐                        │
+│              │   Central Service    │                        │
+│              │     (Port 8000)      │                        │
+│              └──────────┬───────────┘                        │
+└─────────────────────────┼────────────────────────────────────┘
+                          │
+                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  SERVICE LAYER                               │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │Parkplatz │  │  Essen   │  │  Kaffee  │  │  Hotel   │  │
-│  │  :8001   │  │  :8007   │  │  :8008   │  │  :8009   │  │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  │
 │                                                              │
-│  ┌──────────┐                                               │
-│  │ Haustier │                                               │
-│  │  :8010   │                                               │
-│  └──────────┘                                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
+│  │Parkplatz │  │  Essen   │  │  Kaffee  │  │  Hotel   │    │
+│  │  :8001   │  │  :8007   │  │  :8008   │  │  :8009   │    │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+│                                                              │
+│  ┌──────────┐                    ┌──────────┐              │
+│  │ Haustier │                    │ Garderobe │              │
+│  │  :8010   │                    │  :8006   │              │
+│  └──────────┘                    └──────────┘              │
+│                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -278,10 +296,91 @@ CENTRAL_SERVICE_ADDRESS = "test-agent://agent1q..."  # Hier eintragen
 | **Parkplatz** | 8001 | Verwaltet Parkplatz-Reservierungen |
 | **Voice Assistant** | 8002 | Sprachsteuerung für Fahrer |
 | **Fahrer GUI** | 8003 | Grafische Benutzeroberfläche |
+| **Garderobe** | 8006 | Verwaltet Garderobe-Abgabe/-Abholung |
 | **Essensservice** | 8007 | Verwaltet Essensbestellungen |
 | **Kaffee** | 8008 | Verwaltet Kaffee-Bestellungen |
 | **Hotel** | 8009 | Verwaltet Hotel-Zimmerbuchungen |
 | **Haustierbetreuung** | 8010 | Verwaltet Haustierbetreuung |
+
+---
+
+### 📋 Detaillierte Agent-Funktionen
+
+#### 🚀 Central Service (Port 8000)
+- **Funktion**: Zentrale Nachrichtenverteilung
+- **Aufgaben**:
+  - Empfängt Anfragen von GUI/Voice Clients
+  - Routet Nachrichten an die entsprechenden Service-Agenten
+  - Verwaltet Agent-Adressen und Service-Mapping
+  - Konvertiert Nachrichten zwischen verschiedenen Modellen
+
+#### 🚗 Parkplatz-Service (Port 8001)
+- **Funktion**: Parkplatz-Reservierungssystem
+- **Features**:
+  - Unterstützt PKW, LKW, Bus
+  - Ladesäulen-Verfügbarkeit
+  - Behindertenparkplätze (2% der Kapazität)
+  - Automatische Erinnerungen 5 Minuten vor Ablauf
+  - Reservierungs-ID Tracking
+  - Fallback-Mechanismen (z.B. 3× PKW → LKW)
+
+#### 🎤 Voice Assistant (Port 8002)
+- **Funktion**: Sprachgesteuerte Interaktion
+- **Features**:
+  - Wake-Word-Erkennung ("Hallo")
+  - Speech-to-Text (Faster-Whisper)
+  - LLM-basierte Intent-Klassifikation (Ollama)
+  - Text-to-Speech (Piper TTS)
+  - Asynchrone Nachrichtenverarbeitung
+
+#### 🖥️ Fahrer GUI (Port 8003)
+- **Funktion**: Grafische Benutzeroberfläche
+- **Features**:
+  - Futuristisches Dark Theme
+  - Fahrer-Profile (LKW-Fahrer, Pendler, Familie, Reisebus)
+  - Echtzeit-System-Log
+  - Scrollbare Kontroll-Panels
+  - Service-Enable/Disable Switches
+
+#### 🧥 Garderobe-Service (Port 8006)
+- **Funktion**: Garderobe-Verwaltung
+- **Features**:
+  - Artikel-Abgabe mit QR-Code-Generierung
+  - Digitale oder physische Token
+  - QR-Code-basierte Abholung
+  - Max. 100 Schließfächer
+  - Automatische Slot-Verwaltung
+
+#### 🍽️ Essensservice (Port 8007)
+- **Funktion**: Essensbestellungssystem
+- **Features**:
+  - Menü-Auswahl: Standard, Vegetarisch, Vegan, Glutenfrei
+  - Öffnungszeiten: 08:00 - 20:00
+  - Kapazitäts-Management (max. 60 Bestellungen/Stunde)
+  - Zeitbasierte Verfügbarkeitsprüfung
+
+#### ☕ Kaffee-Service (Port 8008)
+- **Funktion**: Kaffee-Bestellungssystem
+- **Features**:
+  - Schnelle Bestellabwicklung
+  - Automatische Berechnung der Abholzeit (+5 Minuten)
+  - To-Go Unterstützung
+
+#### 🏨 Hotel-Service (Port 8009)
+- **Funktion**: Hotel-Zimmerbuchung
+- **Features**:
+  - Zimmerarten: Einzel, Doppel, Familie
+  - Mehrnächtige Buchungen
+  - Verfügbarkeits-Tracking
+  - Automatische Kapazitätsverwaltung
+
+#### 🐾 Haustierbetreuung (Port 8010)
+- **Funktion**: Haustierbetreuungsservice
+- **Features**:
+  - Unterstützt Hunde (10 Plätze) und Katzen (20 Plätze)
+  - Zeitbasierte Betreuung (von-bis)
+  - Verfügbarkeitsprüfung
+  - Automatische Kapazitätsverwaltung
 
 ---
 
@@ -377,10 +476,23 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 ---
 
-## 👥 Kontakt
+<a name="kontakt--links"></a>
+## 👥 Kontakt & Links
 
-**Projekt-Link:** [https://github.com/your_username/ems-rest-stop-agents](https://github.com/your_username/ems-rest-stop-agents)
+**🌐 Webseite:** [https://jandost-ahmad.github.io/ems-webseit/](https://jandost-ahmad.github.io/ems-webseit/)
+
+**📦 Projekt-Link:** [https://github.com/your_username/ems-rest-stop-agents](https://github.com/your_username/ems-rest-stop-agents)
 
 ---
 
-<p align="right">(<a href="#readme-top">nach oben</a>)</p>
+<div align="center">
+
+### ⚡ DAINO - Starke Pause für Ihre Reise
+
+**Einzigartig. Nachhaltig. Modern.**
+
+Made with ❤️ for better rest stops
+
+[⬆️ Nach oben](#readme-top)
+
+</div>

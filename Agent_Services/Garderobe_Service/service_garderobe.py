@@ -108,4 +108,11 @@ async def handle_abholung(ctx: Context, sender: str, msg: GarderobeAbholungReque
 
 
 if __name__ == "__main__":
+    print("=" * 60)
+    print("🧥 GARDEROBE-SERVICE GESTARTET")
+    print("=" * 60)
+    print(f"📍 Agent-Adresse: {garderobe.address}")
+    print(f"🌐 Endpoint: http://localhost:8006/submit")
+    print("=" * 60)
+    print()
     garderobe.run()
