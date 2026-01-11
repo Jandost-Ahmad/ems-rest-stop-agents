@@ -57,15 +57,15 @@ def two_percent(x):
     return max(1, round(x * 0.02))
 
 
-behindert_pkw_ohne_lade = two_percent(pkw_total)
-behindert_pkw_mit_lade = two_percent(pkw_total)
-behindert_lkw_mit_lade = two_percent(lkw_total)
+behindert_pkw_total = two_percent(pkw_total)
+behindert_pkw_ohne_lade = behindert_pkw_total // 2
+behindert_pkw_mit_lade = behindert_pkw_total - behindert_pkw_ohne_lade
 
-pkw_rest = pkw_total - behindert_pkw_ohne_lade - behindert_pkw_mit_lade
-pkw_lade = min(pkw_lade_total, pkw_rest)
+pkw_rest = pkw_total - behindert_pkw_total
+pkw_lade = min(pkw_lade_total - behindert_pkw_mit_lade, pkw_rest)
 pkw_frei = pkw_rest - pkw_lade
 
-# ❗ Hier fehlte die Zeile
+behindert_lkw_mit_lade = two_percent(lkw_total)
 lkw_lade = lkw_total - behindert_lkw_mit_lade
 
 bus_lade = bus_total
