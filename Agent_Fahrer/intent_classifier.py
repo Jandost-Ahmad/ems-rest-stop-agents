@@ -1,14 +1,54 @@
 """
 intent_classifier.py
+====================
 
-LLM-based intent classifier for the Rest-Stop Voice Assistant.
+LLM-based Intent Classification for German Highway Rest Stop Voice Assistant
+-----------------------------------------------------------------------------
 
-- Talks to Ollama (local daemon or cloud) via /api/chat
-- System prompt and examples are fully in German
-- Output is a strict JSON object with:
-    action: "parking|food|hotel|coffee|pet|help|unknown"
-    parameters: { ... }
-    confidence: 0.0 - 1.0
+This module provides intelligent classification of voice commands into actionable
+service requests using a large language model (LLM). It transforms natural 
+German speech into structured intent representations that can be routed to
+specialized service agents.
+
+Architecture:
+    - LLM Backend: Ollama API (local or cloud deployment)
+    - Input: Natural German speech transcription
+    - Output: Structured Intent dataclass with action and parameters
+    - Confidence: Scoring for classification certainty
+
+Supported Actions:
+    - parking: Parking reservations (PKW/LKW/Bus, charging stations)
+    - food: Restaurant orders (meal types, dine-in/takeout)
+    - hotel: Room bookings (single/double/family, nights)
+    - coffee: Coffee to-go orders
+    - pet: Pet care services (dog/cat)
+    - help: General assistance requests
+    - unknown: Out-of-domain queries
+
+Key Features:
+    - German-language system prompt with domain constraints
+    - Few-shot learning examples for better accuracy
+    - JSON-structured output for easy parsing
+    - Confidence scoring (0.0-1.0) for intent validation
+    - HTTP timeout and error handling for reliability
+
+Integration:
+    Used by voice_assistant.py to convert transcribed speech into
+    service-specific messages that can be routed via CentralService.
+
+Example:
+    >>> classifier = LLMIntentClassifier(model="gpt-oss:20b-cloud")
+    >>> intent = classifier.classify("Ich brauche einen Parkplatz für mein Auto")
+    >>> print(intent.action)  # "parking"
+    >>> print(intent.parameters)  # {"vehicle": "PKW", "charging": "ohne"}
+
+Dependencies:
+    - requests: HTTP communication with Ollama API
+    - json: Response parsing
+    - dataclasses: Intent structure definition
+
+Author: EMS Rest Stop Agents Project
+Version: 1.0
 """
 
 from dataclasses import dataclass
@@ -17,16 +57,74 @@ import json
 import requests
 
 
+# =============================================================================
+# DATA STRUCTURES
+# =============================================================================
+
 @dataclass
 class Intent:
+    """
+    Structured representation of classified user intent.
+    
+    Attributes:
+        action (str): Intent category (parking/food/hotel/coffee/pet/help/unknown)
+        parameters (Dict): Action-specific parameters extracted from speech
+        confidence (float): Classification confidence score (0.0-1.0)
+        original_text (str): Original transcribed user speech
+    
+    Parameter Examples:
+        parking: {"vehicle": "PKW", "charging": "mit", "duration_minutes": 120}
+        food: {"food_type": "Vegetarisch", "togo": True}
+        hotel: {"room_type": "doppel", "nights": 2}
+        coffee: {} (no parameters)
+        pet: {"animal": "hund"}
+    
+    Confidence Interpretation:
+        > 0.8: High confidence - proceed with action
+        0.5-0.8: Medium confidence - may need confirmation
+        < 0.5: Low confidence - request clarification
+    """
     action: str
     parameters: Dict
     confidence: float
     original_text: str
 
 
+# =============================================================================
+# LLM INTENT CLASSIFIER
+# =============================================================================
+
 class LLMIntentClassifier:
-    """Uses an LLM (local or cloud via Ollama) to classify user intents."""
+    """
+    LLM-based intent classifier using Ollama API for German voice commands.
+    
+    Sends user speech to an LLM with a German system prompt and few-shot
+    examples, then parses the structured JSON response into an Intent object.
+    
+    Attributes:
+        model (str): Ollama model name (e.g., "gpt-oss:20b-cloud")
+        api_url (str): Ollama API endpoint (default: http://localhost:11434)
+        request_timeout (int): HTTP timeout in seconds
+        system_prompt (str): German-language domain-specific instructions
+    
+    Supported Models:
+        - gpt-oss:20b-cloud: Balanced performance/speed
+        - deepseek-v3.1:671b-cloud: Higher accuracy, slower
+        - llama3.1:70b: Local deployment option
+    
+    Classification Process:
+        1. Construct chat messages (system + examples + user input)
+        2. Send POST request to Ollama /api/chat endpoint
+        3. Parse streamed JSON response chunks
+        4. Extract action, parameters, confidence
+        5. Validate and return Intent object
+    
+    Error Handling:
+        - Network errors: Return unknown intent with confidence 0.0
+        - JSON parsing errors: Return unknown intent
+        - LLM response errors: Log and return unknown intent
+        - Timeout: Configurable via request_timeout parameter
+    """
 
     def __init__(
         self,
@@ -35,18 +133,28 @@ class LLMIntentClassifier:
         request_timeout: int = 60,
     ):
         """
+        Initialize the LLM intent classifier with connection parameters.
+        
         Args:
-            model: Name of the Ollama model, e.g. "gpt-oss:20b-cloud" or "deepseek-v3.1:671b-cloud"
-            api_url: Ollama API base URL ("http://localhost:11434" for local daemon)
-            request_timeout: HTTP timeout in seconds
+            model (str): Name of the Ollama model to use
+                        Examples: "gpt-oss:20b-cloud", "deepseek-v3.1:671b-cloud"
+            api_url (str): Base URL for Ollama API endpoint
+                          Default: "http://localhost:11434" (local daemon)
+                          Cloud: "https://your-cloud-endpoint.com"
+            request_timeout (int): HTTP request timeout in seconds (default: 60)
+        
+        Notes:
+            - Model must be pre-installed in Ollama (run `ollama pull <model>`)
+            - API URL is stripped of trailing slashes automatically
+            - System prompt and few-shot examples initialized internally
         """
         self.model = model
         self.api_url = api_url.rstrip("/")
         self.request_timeout = request_timeout
 
-        # ------------------------------------------------------------
-        # System prompt: completely German, narrow domain
-        # ------------------------------------------------------------
+        # =============================================================================
+        # SYSTEM PROMPT: German Domain-Specific Instructions
+        # =============================================================================
         self.system_prompt = """
 Du bist ein deutscher Sprachassistent für eine Autobahn-Raststätte.
 
@@ -114,9 +222,12 @@ REGELN:
 - Sprich mit dir selbst niemals Englisch – die Eingaben sind hauptsächlich Deutsch.
 """
 
-        # ------------------------------------------------------------
-        # Deutsche Few-Shot-Beispiele
-        # ------------------------------------------------------------
+        # =============================================================================
+        # FEW-SHOT EXAMPLES: German Training Data
+        # =============================================================================
+        # These examples improve classification accuracy by showing the LLM
+        # exactly how to map various German phrasings to structured intents.
+        # Each example includes natural user speech and expected JSON response.
         self.examples: List[Dict[str, str]] = [
             {
                 "user": "Ich brauche einen PKW Parkplatz mit Ladesäule für zwei Stunden.",
@@ -231,12 +342,56 @@ REGELN:
             },
         ]
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    # =============================================================================
+    # PUBLIC CLASSIFICATION API
+    # =============================================================================
+    
     def classify(self, text: str) -> Intent:
         """
-        Classify user intent using the configured LLM via Ollama.
+        Classify German user speech into structured intent with LLM.
+        
+        Sends user text to Ollama LLM with system prompt and few-shot examples,
+        then parses the JSON response into a validated Intent object.
+        
+        Args:
+            text (str): Natural German speech transcription from user
+                       Example: "Ich brauche einen Parkplatz für mein Auto"
+        
+        Returns:
+            Intent: Structured intent with action, parameters, and confidence
+        
+        Classification Pipeline:
+            1. Construct chat messages (system + examples + user text)
+            2. Send POST to Ollama /api/chat with streaming enabled
+            3. Accumulate streamed response chunks
+            4. Parse final JSON: {"action": "...", "parameters": {...}, "confidence": 0.0-1.0}
+            5. Validate action is in allowed set
+            6. Return Intent object with original_text preserved
+        
+        Error Handling:
+            - Network errors: Return Intent(action="unknown", confidence=0.0)
+            - JSON parse errors: Return unknown intent
+            - Invalid action: Return unknown intent
+            - LLM timeout: Configurable via request_timeout
+        
+        Action Validation:
+            Valid: parking, food, hotel, coffee, pet, help, unknown
+            Invalid actions are converted to "unknown" with confidence 0.0
+        
+        Examples:
+            >>> classifier.classify("Parkplatz für LKW mit Ladesäule")
+            Intent(action='parking', parameters={'vehicle': 'LKW', 'charging': 'mit'}, 
+                   confidence=0.95, original_text='Parkplatz für LKW mit Ladesäule')
+            
+            >>> classifier.classify("Vegetarisches Essen zum Mitnehmen")
+            Intent(action='food', parameters={'food_type': 'Vegetarisch', 'togo': True},
+                   confidence=0.92, original_text='Vegetarisches Essen zum Mitnehmen')
+        
+        Notes:
+            - Requires running Ollama instance at self.api_url
+            - Model must be pre-installed (ollama pull <model>)
+            - Streaming=True for better responsiveness on large models
+            - Original text preserved for logging/debugging
 
         Args:
             text: User's transcribed speech (German)
@@ -245,24 +400,26 @@ REGELN:
             Intent object
         """
         try:
+            # Build chat conversation with system prompt and few-shot examples
             messages = [{"role": "system", "content": self.system_prompt}]
 
-            # Few-shot examples
+            # Add few-shot examples for in-context learning
             for ex in self.examples:
                 messages.append({"role": "user", "content": ex["user"]})
                 messages.append({"role": "assistant", "content": ex["response"]})
 
-            # User query
+            # Add actual user query
             messages.append({"role": "user", "content": text})
 
+            # Send classification request to Ollama
             response = requests.post(
                 f"{self.api_url}/api/chat",
                 json={
                     "model": self.model,
                     "messages": messages,
-                    "stream": False,
+                    "stream": False,  # Wait for complete response
                     "options": {
-                        "temperature": 0.0,
+                        "temperature": 0.0,  # Deterministic output
                         "top_p": 0.9,
                     },
                 },
@@ -277,7 +434,7 @@ REGELN:
             result = response.json()
             assistant_message = result["message"]["content"].strip()
 
-            # Handle ```json ... ``` wrappers if present
+            # Strip markdown code fences if LLM wrapped response
             json_str = assistant_message
             if json_str.startswith("```json"):
                 json_str = json_str[7:]
@@ -287,6 +444,7 @@ REGELN:
                 json_str = json_str[:-3]
             json_str = json_str.strip()
 
+            # Parse JSON response
             parsed = json.loads(json_str)
 
             action = parsed.get("action", "unknown")
@@ -318,9 +476,38 @@ REGELN:
                 original_text=text,
             )
 
-    # ------------------------------------------------------------------
+    # =============================================================================
+    # CONNECTION TESTING
+    # =============================================================================
+    
     def test_connection(self) -> bool:
-        """Test if Ollama is reachable and the model exists."""
+        """
+        Verify Ollama API connectivity and model availability.
+        
+        Checks that:
+        1. Ollama API is reachable at configured URL
+        2. Specified model is installed and accessible
+        
+        Returns:
+            bool: True if connection successful and model available, False otherwise
+        
+        Usage:
+            >>> classifier = LLMIntentClassifier(model="gpt-oss:20b-cloud")
+            >>> if classifier.test_connection():
+            ...     intent = classifier.classify("Parkplatz für PKW")
+            ... else:
+            ...     print("Ollama not available")
+        
+        Diagnostics:
+            - Prints success/failure messages with details
+            - Lists available models if configured model not found
+            - Shows connection errors with exception details
+        
+        Notes:
+            - Uses /api/tags endpoint (Ollama management API)
+            - 5-second timeout for quick failure detection
+            - Partial name matching (e.g., "gpt-oss" matches "gpt-oss:20b-cloud")
+        """
         try:
             resp = requests.get(f"{self.api_url}/api/tags", timeout=5)
             if resp.status_code != 200:
@@ -340,7 +527,36 @@ REGELN:
             return False
 
 
+# =============================================================================
+# INTERACTIVE TESTING
+# =============================================================================
+
 if __name__ == "__main__":
+    """
+    Interactive test mode for intent classification.
+    
+    Usage:
+        python intent_classifier.py
+        
+        Then enter German sentences to see classification results.
+        Empty input exits the program.
+    
+    Test Examples:
+        > Ich brauche einen Parkplatz für mein Auto
+        > Vegetarisches Essen zum Mitnehmen bitte
+        > Ein Doppelzimmer für zwei Nächte
+        > Kann ich meinen Hund hier lassen?
+        > Kaffee to go
+    
+    Output Format:
+        Action:      parking
+        Parameters:  {'vehicle': 'PKW', 'charging': 'ohne'}
+        Confidence:  0.95
+    
+    Prerequisites:
+        - Ollama running at http://localhost:11434
+        - Model installed: ollama pull gpt-oss:20b-cloud
+    """
     clf = LLMIntentClassifier()
     print("Testing connection to Ollama...")
     clf.test_connection()

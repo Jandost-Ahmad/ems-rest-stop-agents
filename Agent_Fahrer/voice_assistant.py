@@ -1,14 +1,46 @@
-"""
-voice_assistant.py
+"""Voice assistant agent for rest stop services.
 
-Voice Assistant Agent for your rest-stop simulation.
+This module implements a wake word-activated voice assistant that enables
+hand-free interaction with the rest stop service system. The assistant uses
+multi-stage processing to understand driver requests and coordinate with services.
 
-- Faster-Whisper (tiny) for STT
-- Ollama + LLMIntentClassifier for intent → structured command
-- Piper TTS for speech output (via CLI + WAV files)
-- Talks to CentralService, which forwards to the service agents
-- Uses a wake word ("DAINO") so it only listens when called
-- Non-blocking: uses asyncio.to_thread so the agent can receive replies
+Architecture:
+- Speech-to-Text (STT): Faster-Whisper for German transcription
+- Intent Classification: LLM-based (Ollama) for natural language understanding
+- Text-to-Speech (TTS): Piper for German voice synthesis
+- Agent Communication: uAgents framework for service coordination
+- Wake Word: "Hallo" activation for hands-free operation
+
+Workflow:
+1. Passive listening for wake word ("Hallo")
+2. Acknowledge activation: "Wie kann ich Ihnen helfen?"
+3. Record and transcribe full request (max 10 seconds)
+4. Classify intent using LLM (parking, food, hotel, coffee, pet)
+5. Convert to service messages and send to CentralService
+6. Receive service responses and speak them back
+7. Return to passive listening state
+
+Features:
+- Non-blocking async architecture
+- Queue-based reply handling for ordered speech
+- Multi-service request batching
+- Confidence-based intent validation
+- Error recovery and user guidance
+- German language optimization
+
+Dependencies:
+- faster-whisper: STT engine (small model, CPU optimized)
+- ollama: LLM inference (gpt-oss:20b-cloud or similar)
+- piper: TTS engine (thorsten-low German voice)
+- sounddevice/soundfile: Audio I/O
+- uagents: Agent communication
+
+Configuration:
+- CENTRAL_SERVICE_ADDRESS: Target service router address
+- WAKE_WORD: Activation phrase ("Hallo")
+- STT_MODEL_SIZE: Whisper model variant ("small")
+- PIPER_MODEL_PATH: Path to German voice model
+
 """
 
 import asyncio
@@ -27,9 +59,19 @@ from uagents import Agent, Context, Model
 
 from intent_classifier import LLMIntentClassifier, Intent
 
-# ============================================================
-#                  SHARED MESSAGE MODELS
-# ============================================================
+# =============================================================================
+# SHARED MESSAGE MODELS
+# =============================================================================
+"""
+Message models matching the CentralService and specialized service agents.
+These MUST be kept in sync with the service definitions to ensure proper
+serialization and communication.
+
+All models include:
+- type: Service identifier for routing
+- client_sender: Return address for responses
+- Service-specific parameters
+"""
 
 # ---- Request models (must match service_central + services) ----
 
@@ -87,9 +129,37 @@ class Message(Model):
     zeit: str
 
 
-# ============================================================
-#                    CONFIGURATION
-# ============================================================
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+"""
+Voice assistant configuration parameters.
+
+CENTRAL_SERVICE_ADDRESS:
+    CRITICAL: Must match the address printed by service_central.py on startup.
+    Copy the full test-agent:// address from the central service console output.
+    Without this, the assistant cannot communicate with services.
+
+STT (Speech-to-Text) Configuration:
+    - MODEL_SIZE: "tiny" (fastest), "base", "small" (balanced), "medium", "large"
+    - DEVICE: "cpu" or "cuda" (GPU acceleration)
+    - COMPUTE_TYPE: "int8" (CPU), "float16" (GPU), "int8_float16" (hybrid)
+    - Recommendation: "small"/"cpu"/"int8" for good accuracy with reasonable speed
+
+TTS (Text-to-Speech) Configuration:
+    - PIPER_MODEL_PATH: Path to German voice model (.onnx file)
+    - thorsten-low: Good quality, fast, natural-sounding German male voice
+    - TTS_OUTPUT_DIR: Temporary storage for generated WAV files
+
+Wake Word Configuration:
+    - WAKE_WORD: Activation phrase ("Hallo" is short and reliable)
+    - WAKE_RECORD_SECONDS: Short chunks for continuous wake word detection
+    - Shorter = more responsive, but more CPU usage
+
+Recording Configuration:
+    - MAX_RECORD_SECONDS: Maximum request length (10s sufficient for most requests)
+    - CURRENT_LANGUAGE: "de" forces German, None auto-detects (slower)
+"""
 
 # !!! IMPORTANT !!!
 # Paste here the address printed by service_central.py when it starts
@@ -115,9 +185,38 @@ MAX_RECORD_SECONDS = 10
 # Language for Whisper ("de", "en", or None for auto detect)
 CURRENT_LANGUAGE = "de" 
 
-# ============================================================
-#              INIT STT + LLM + AGENT + QUEUE
-# ============================================================
+# =============================================================================
+# INITIALIZATION - STT, LLM, AGENT, STATE
+# =============================================================================
+"""
+Initialize all components required for voice assistant operation.
+
+Components:
+1. Faster-Whisper STT Model:
+   - Loaded once at startup for efficiency
+   - Configured for German language optimization
+   - Uses CPU-optimized int8 quantization
+
+2. LLM Intent Classifier:
+   - Connects to Ollama API (local or cloud)
+   - Trained with German few-shot examples
+   - Classifies 7 intent types: parking, food, hotel, coffee, pet, help, unknown
+
+3. Voice Assistant Agent:
+   - Port 8002 for external access
+   - Tailscale endpoint for remote connectivity
+   - Receives service responses asynchronously
+
+4. State Management:
+   - reply_queue: Ensures ordered speech output
+   - State flags: Control conversation flow (wake word → request → replies)
+   - Reply tracking: Ensures all services respond before next interaction
+
+State Machine:
+- waiting_for_wake_word: Passive listening mode
+- waiting_for_request: Active, expecting full request after wake word
+- awaiting_replies: Request sent, waiting for all service confirmations
+"""
 
 print("🔊 Lade Faster-Whisper …")
 stt_model = WhisperModel(
@@ -180,7 +279,30 @@ def record_audio_blocking(duration: int, samplerate: int = 16000) -> str:
 
 
 def transcribe_blocking(path: str, language: str = CURRENT_LANGUAGE) -> str:
-    """Use Faster-Whisper to transcribe audio file (blocking)."""
+    """
+    Transcribe audio file to text using Faster-Whisper (blocking operation).
+    
+    Uses the pre-loaded Whisper model to convert speech to German text.
+    Optimized for accuracy with beam search decoding.
+    
+    Args:
+        path (str): Path to WAV file to transcribe
+        language (str): Language code ("de" for German, None for auto-detect)
+    
+    Returns:
+        str: Transcribed text, or empty string on error
+    
+    Notes:
+        - Beam size 5 provides good accuracy-speed balance
+        - Language set to "de" forces German (faster than auto-detect)
+        - Segments are joined with spaces for natural text
+        - Errors are logged but don't raise exceptions
+        - Empty files or silence return empty string
+    
+    Performance:
+        - small model: ~1-2 seconds for 10 second audio on CPU
+        - Beam size 5: Good balance between speed and accuracy
+    """
     if not path:
         return ""
 
@@ -200,14 +322,62 @@ def transcribe_blocking(path: str, language: str = CURRENT_LANGUAGE) -> str:
 
 
 def tts_speak_blocking(text: str):
-    """Use Piper CLI to synthesize and play speech (blocking)."""
+    """
+    Synthesize and play German speech using Piper TTS (blocking operation).
+    
+    Converts text to speech using Piper CLI with German voice model,
+    then plays the audio through the default sound device. Includes
+    comprehensive text sanitization to handle emojis and special characters.
+    
+    Args:
+        text (str): Text to speak (German). May contain emojis and special chars.
+    
+    Returns:
+        None
+    
+    Text Processing:
+        - Removes all emojis (Unicode ranges 0x1F300-0x1F9FF, etc.)
+        - Filters surrogate pairs and control characters
+        - Replaces problematic characters with spaces
+        - Normalizes multiple spaces
+    
+    Fallback Behavior:
+        1. Primary: Piper CLI with thorsten-low German voice
+        2. Fallback: pyttsx3 (if Piper fails and pyttsx3 is available)
+        3. Silent failure: Logs error if both fail
+    
+    Notes:
+        - Blocks until speech completes
+        - Cleans up old WAV files before generating new ones
+        - Temporary WAV files stored in TTS_OUTPUT_DIR
+        - Piper must be installed and in system PATH
+        - UTF-8 encoding for German umlauts (ä, ö, ü, ß)
+    
+    Performance:
+        - Generation: ~0.5-1 second for typical sentence
+        - Playback: Real-time (depends on text length)
+    """
     if not text:
         return
 
     try:
         # FIRST: Remove/replace emojis and problematic characters BEFORE any processing
         def clean_text_for_tts(s: str) -> str:
-            """Remove emojis and sanitize text for TTS."""
+            """
+            Remove emojis and sanitize text for TTS.
+            
+            Filters out:
+            - Emoji characters (various Unicode ranges)
+            - Surrogate pairs
+            - Control characters (except whitespace)
+            - Invalid Unicode code points
+            
+            Args:
+                s (str): Input text with potential emojis
+            
+            Returns:
+                str: Cleaned text safe for TTS processing
+            """
             if not s:
                 return s
             
@@ -311,12 +481,44 @@ def tts_speak_blocking(text: str):
         print(f"❌ TTS-Fehler: {e}")
 
 
-# ============================================================
-#           BUILD CENTRAL SERVICE MESSAGE FROM INTENT
-# ============================================================
+# =============================================================================
+# INTENT TO SERVICE MESSAGE CONVERSION
+# =============================================================================
 
 def build_central_message(intent: Intent, sender_address: str) -> CentralServiceMessage | None:
-    """Turn an Intent into a CentralServiceMessage (list of service messages)."""
+    """
+    Convert classified intent into service request messages for CentralService.
+    
+    Transforms a high-level intent (from LLM classification) into concrete
+    service messages that can be routed to specialized agents.
+    
+    Args:
+        intent (Intent): Classified user intent with action and parameters
+        sender_address (str): Voice assistant agent address for responses
+    
+    Returns:
+        CentralServiceMessage: Batch message with service requests, or None if
+                              intent cannot be converted (help/unknown actions)
+    
+    Supported Intents:
+        - parking: Creates ParkplatzMessage with vehicle type, charging, duration
+        - food: Creates EssenMessage with meal type selection
+        - hotel: Creates HotelMessage with room type and nights
+        - coffee: Creates KaffeeMessage for coffee orders
+        - pet: Creates HaustierMessage with animal type and care period
+        - extend_parking: Updates existing parking reservation
+    
+    Default Values:
+        - Current time (HH:MM) for all timestamps
+        - 2-hour care period for pets (now + 2 hours)
+        - 1 night for hotel if not specified
+    
+    Notes:
+        - help and unknown intents return None (no service action)
+        - All messages include client_sender for response routing
+        - Parameters extracted from intent.parameters dict
+        - Confidence score is not included in service messages
+    """
     now = datetime.now()
     jetzt = now.strftime("%H:%M")
     in_2_stunden = (now + timedelta(hours=2)).strftime("%H:%M")
@@ -396,15 +598,36 @@ def build_central_message(intent: Intent, sender_address: str) -> CentralService
     return CentralServiceMessage(messages=msgs)
 
 
-# ============================================================
-#        RECEIVE REPLIES FROM SERVICES (NON-BLOCKING)
-# ============================================================
+# =============================================================================
+# MESSAGE HANDLERS
+# =============================================================================
 
 @assistantAgent.on_message(model=Message)
 async def on_service_reply(ctx: Context, sender: str, msg: Message):
     """
-    Called when any service sends a reply.
-    We push it to the queue for TTS and track how many replies we got.
+    Handle service responses and queue them for speech synthesis.
+    
+    Receives responses from all specialized services (parking, food, hotel, 
+    coffee, pet care) and adds them to a FIFO queue for ordered speech output.
+    
+    Args:
+        ctx (Context): Agent context (unused)
+        sender (str): Address of responding service agent
+        msg (Message): Service response with type, message text, and timestamp
+    
+    State Management:
+        - Tracks received_replies count vs expected_replies
+        - Sets awaiting_replies=False when all responses received
+        - Resets to waiting_for_wake_word state after completion
+    
+    Queue Structure:
+        Each entry: Message model with type, message text, zeit timestamp
+        Processing: speaker_loop() consumes queue and speaks each message
+    
+    Notes:
+        - Non-blocking: Only queues message, doesn't wait for TTS
+        - Multiple service responses are processed in order received
+        - Global state synchronization for multi-service requests
     """
     global awaiting_replies, received_replies, expected_replies, waiting_for_wake_word
 
@@ -419,26 +642,92 @@ async def on_service_reply(ctx: Context, sender: str, msg: Message):
 
 
 async def speaker_loop():
-    """Background task: read replies from queue and speak them one by one."""
+    """
+    Background task continuously reading and speaking queued service responses.
+    
+    Consumes messages from reply_queue in FIFO order and synthesizes each
+    response using TTS. Runs indefinitely as an async background task.
+    
+    Processing Loop:
+        1. Wait for message in queue (blocking)
+        2. Extract message text and optional timestamp
+        3. Format speech output with type and content
+        4. Call tts_speak_blocking() to synthesize
+        5. Repeat
+    
+    Queue Behavior:
+        - Empty queue: Blocks until message arrives
+        - Multiple messages: Processes sequentially
+        - No timeout: Waits forever for next message
+    
+    Speech Format:
+        "Service Type: Message text. Time: HH:MM" (if timestamp provided)
+        Example: "Parkplatz: Reservierung bestätigt. Zeit: 14:30"
+    
+    Notes:
+        - Must be started with asyncio.create_task(speaker_loop())
+        - Blocking TTS calls prevent message overlap
+        - Error handling in tts_speak_blocking prevents crashes
+    """
     while True:
         msg: Message = await reply_queue.get()
         await asyncio.to_thread(tts_speak_blocking, msg.message)
 
 
-# ============================================================
-#              MAIN VOICE LOOP  (WAKE WORD)
-# ============================================================
+# =============================================================================
+# MAIN VOICE INTERACTION LOOP
+# =============================================================================
 
 async def voice_main(ctx: Context):
     """
-    Main voice interaction loop with wake word.
-
-    Flow:
-      1. Listen in short chunks until we hear the wake word
-      2. Say: "Wie kann ich Ihnen helfen?"
-      3. Record full request, classify, send to CentralService
-      4. Wait until all service replies are spoken
-      5. Go back to step 1
+    Main voice interaction loop implementing wake word-based conversation flow.
+    
+    Implements a state machine for hands-free voice interaction with services:
+    1. waiting_for_wake_word: Listen for "Hallo" in short audio chunks
+    2. waiting_for_request: Record full user request after wake word
+    3. awaiting_replies: Process service responses and speak them
+    
+    Conversation Flow:
+        User: "Hallo"
+        Assistant: "Wie kann ich Ihnen helfen?"
+        User: "Ich brauche einen Parkplatz für mein Auto"
+        [System: Classifies intent, sends to services]
+        Assistant: [Speaks all service responses from queue]
+        [Reset to waiting_for_wake_word]
+    
+    State Management:
+        - waiting_for_wake_word: True when ready for wake word
+        - waiting_for_request: True after wake word detected
+        - awaiting_replies: True when services are processing
+        - expected_replies: Number of services to wait for
+        - received_replies: Counter for responses received
+    
+    Wake Word Detection:
+        - Records 4-second audio chunks continuously
+        - Transcribes each chunk to text
+        - Checks for WAKE_WORD ("hallo") case-insensitive
+        - Triggers request recording on match
+    
+    Request Processing:
+        1. Record 8-second user request
+        2. Transcribe audio to text
+        3. Classify intent with LLM
+        4. Build service messages from intent
+        5. Send to CentralService
+        6. Set expected_replies count
+        7. Wait for all responses via speaker_loop()
+    
+    Error Handling:
+        - Audio errors: Print and continue listening
+        - Transcription failures: Skip chunk
+        - Classification errors: Notify user via TTS
+        - Service errors: Handled by service agents
+    
+    Notes:
+        - Runs indefinitely as background task
+        - Non-blocking: Uses asyncio.to_thread for blocking operations
+        - speaker_loop() handles TTS output asynchronously
+        - Global state variables synchronized across handlers
     """
     global waiting_for_wake_word, waiting_for_request
     global awaiting_replies, expected_replies, received_replies
@@ -547,13 +836,37 @@ async def voice_main(ctx: Context):
             awaiting_replies = False
 
 
-# ============================================================
-#          STARTUP HOOK – START BACKGROUND TASKS ONCE
-# ============================================================
+# =============================================================================
+# AGENT INITIALIZATION HOOK
+# =============================================================================
 
 @assistantAgent.on_interval(period=1.0)
 async def starter(ctx: Context):
-    """Start the voice loop + speaker loop once, without blocking the agent."""
+    """
+    Initialize voice assistant background tasks on first agent startup.
+    
+    Ensures voice_main() and speaker_loop() are started exactly once when
+    the agent begins running. Uses global flag to prevent duplicate task
+    creation on subsequent interval triggers.
+    
+    Background Tasks:
+        1. speaker_loop(): Consumes reply_queue and speaks service responses
+        2. voice_main(): Listens for wake word and handles user requests
+    
+    Args:
+        ctx (Context): Agent context for voice_main loop
+    
+    Execution:
+        - Triggered every 1.0 seconds by @on_interval decorator
+        - Returns immediately after first execution (_started=True)
+        - Both tasks run indefinitely until agent shutdown
+    
+    Notes:
+        - Global _started flag prevents duplicate task creation
+        - Tasks are created with asyncio.create_task (non-blocking)
+        - No await needed - tasks run in background
+        - Interval continues but has no effect after _started=True
+    """
     global _started
     if _started:
         return
@@ -563,9 +876,45 @@ async def starter(ctx: Context):
     asyncio.create_task(voice_main(ctx))
 
 
-# ============================================================
-#                  RUN AGENT
-# ============================================================
+# =============================================================================
+# MAIN ENTRY POINT
+# =============================================================================
 
 if __name__ == "__main__":
+    """
+    Launch the voice assistant agent.
+    
+    Prerequisites:
+        - Faster-Whisper: Speech-to-text transcription
+        - Piper TTS: German voice synthesis (thorsten-low model)
+        - Ollama: LLM service for intent classification
+        - Intent classifier: Must be initialized in INTENT_CLASSIFIER
+        - CentralService: Running at CENTRAL_SERVICE_ADDRESS
+    
+    Configuration:
+        Modify constants at top of file:
+        - WAKE_WORD: Change activation phrase
+        - MAX_RECORD_SECONDS: Adjust request recording duration
+        - CHUNK_SECONDS: Change wake word detection sensitivity
+        - MODEL_SIZE: Faster-Whisper model (tiny/base/small/medium)
+        - PIPER_MODEL: Path to Piper voice model
+    
+    Usage:
+        python voice_assistant.py
+        
+        Then say "Hallo" to activate voice interaction.
+    
+    Monitoring:
+        - Console output shows transcriptions and service responses
+        - Emoji indicators: 🎧 (ready), 📨 (response), ❌ (error)
+    
+    Shutdown:
+        Ctrl+C to stop (graceful shutdown)
+    
+    Notes:
+        - Requires microphone and speakers
+        - Audio devices auto-selected by sounddevice
+        - CentralService must be running for service requests
+        - LLM connection tested at startup
+    """
     assistantAgent.run()
