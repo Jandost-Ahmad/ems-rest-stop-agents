@@ -198,8 +198,6 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
     art = msg.haustierart.lower()
 
     # Step 5 & 6: Check capacity and process reservation based on pet type
-    antwort = "❌ Es sind keine Plätze mehr frei."
-
     # Dog reservation logic
     if "hund" in art:
         if kapazitaet["hund"] > 0:
