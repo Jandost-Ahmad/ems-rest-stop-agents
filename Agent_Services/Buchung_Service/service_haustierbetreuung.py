@@ -181,8 +181,8 @@ async def handler(ctx: Context, sender: str, msg: HaustierMessage):
 
     # Step 3: Validate and parse care period (start and end times)
     try:
-        start = datetime.datetime.strptime(msg.betreuung_von, "%H:%M").time()
-        ende = datetime.datetime.strptime(msg.betreuung_bis, "%H:%M").time()
+        datetime.datetime.strptime(msg.betreuung_von, "%H:%M").time()
+        datetime.datetime.strptime(msg.betreuung_bis, "%H:%M").time()
     except:
         await ctx.send(
             client,
